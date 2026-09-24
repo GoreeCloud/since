@@ -734,6 +734,7 @@ private fun TrackerTypeChooser(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("tracker-type-event")
                         .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.EVENT) },
                     shape = MaterialTheme.shapes.large,
@@ -762,6 +763,7 @@ private fun TrackerTypeChooser(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .testTag("tracker-type-streak")
                         .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.STREAK) },
                     shape = MaterialTheme.shapes.large,

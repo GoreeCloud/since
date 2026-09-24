@@ -1,6 +1,9 @@
 package com.goreecloud.since.visual
 
+import android.app.UiModeManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.os.Build
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -27,27 +30,76 @@ class SinceVisualEvidenceTest {
 
     @Test
     fun capturePrincipalSinceFlow() {
-        composeRule.onNodeWithText("Since").assertIsDisplayed()
-        capture("dashboard-empty")
+        try {
+            setNightMode(UiModeManager.MODE_NIGHT_NO)
+            composeRule.onNodeWithText("Since").assertIsDisplayed()
+            capture("dashboard-empty")
 
-        composeRule.onNodeWithText("Add tracker").performClick()
-        composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
-        capture("tracker-type-chooser")
+            setNightMode(UiModeManager.MODE_NIGHT_YES)
+            composeRule.onNodeWithText("Since").assertIsDisplayed()
+            capture("dashboard-empty-dark")
 
-        composeRule.onNodeWithText("Streak").performClick()
-        composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
-        capture("create-streak")
+            composeRule.onNodeWithText("Add tracker").performClick()
+            composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
+            capture("tracker-type-chooser-dark")
 
-        composeRule.onNodeWithTag("title-field").performTextInput("Read daily")
-        composeRule.onNodeWithText("Save").performScrollTo().performClick()
+            composeRule.onNodeWithTag("tracker-type-streak").performClick()
+            composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
+            capture("create-streak-dark")
 
-        composeRule.onNodeWithText("Read daily").assertIsDisplayed()
-        composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
-        capture("tracker-details")
+            composeRule.onNodeWithTag("title-field").performTextInput("Read daily")
+            composeRule.onNodeWithText("Save").performScrollTo().performClick()
 
-        composeRule.onNodeWithText("Back").performClick()
-        composeRule.onNodeWithText("Read daily").assertIsDisplayed()
-        capture("dashboard-populated")
+            composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+            composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
+            capture("tracker-details-dark")
+
+            composeRule.onNodeWithText("Back").performClick()
+            composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+            capture("dashboard-populated-dark")
+
+            setNightMode(UiModeManager.MODE_NIGHT_NO)
+            composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+            capture("dashboard-populated")
+
+            composeRule.onNodeWithText("Read daily").performClick()
+            composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
+            capture("tracker-details")
+
+            composeRule.onNodeWithText("Back").performClick()
+            composeRule.onNodeWithText("Add tracker").performClick()
+            composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
+            capture("tracker-type-chooser")
+
+            composeRule.onNodeWithTag("tracker-type-streak").performClick()
+            composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
+            capture("create-streak")
+
+            composeRule.onNodeWithText("Cancel").performClick()
+        } finally {
+            runCatching { setNightMode(UiModeManager.MODE_NIGHT_NO) }
+        }
+    }
+
+    private fun setNightMode(mode: Int) {
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            "Rendered night-mode evidence requires Android 12 or newer."
+        }
+
+        val uiModeManager = InstrumentationRegistry.getInstrumentation()
+            .targetContext
+            .getSystemService(UiModeManager::class.java)
+        uiModeManager.setApplicationNightMode(mode)
+
+        val expectedNightMask = when (mode) {
+            UiModeManager.MODE_NIGHT_YES -> Configuration.UI_MODE_NIGHT_YES
+            else -> Configuration.UI_MODE_NIGHT_NO
+        }
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.activity.resources.configuration.uiMode and
+                Configuration.UI_MODE_NIGHT_MASK == expectedNightMask
+        }
+        composeRule.waitForIdle()
     }
 
     private fun capture(name: String) {
