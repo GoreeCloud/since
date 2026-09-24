@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -1597,6 +1598,7 @@ private fun StartEditorFields(
     }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showTimePicker by rememberSaveable { mutableStateOf(false) }
+    var showTimeZonePicker by rememberSaveable { mutableStateOf(false) }
 
     Text(
         text = stringResource(R.string.start_label),
@@ -1629,17 +1631,19 @@ private fun StartEditorFields(
         )
     }
 
-    OutlinedTextField(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("start-zone-field"),
+    StartPickerField(
+        modifier = Modifier.fillMaxWidth(),
+        label = stringResource(R.string.start_zone_label),
         value = startZoneId,
-        onValueChange = onStartZoneIdChange,
-        label = { Text(stringResource(R.string.start_zone_label)) },
-        supportingText = { Text(stringResource(R.string.start_zone_hint)) },
-        singleLine = true,
-        shape = MaterialTheme.shapes.medium,
+        testTag = "start-zone-picker",
         enabled = enabled,
+        onClick = { showTimeZonePicker = true },
+    )
+    Text(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        text = stringResource(R.string.start_zone_picker_hint),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        style = MaterialTheme.typography.bodySmall,
     )
     TextButton(
         onClick = onUseNow,
@@ -1655,6 +1659,18 @@ private fun StartEditorFields(
             text = startInputErrors.joinToString(separator = "\n"),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    if (showTimeZonePicker) {
+        TimeZonePickerDialog(
+            selectedZoneId = startZoneId,
+            referenceLocalDateTime = startLocalDateTime,
+            onSelect = { selectedZoneId ->
+                onStartZoneIdChange(selectedZoneId)
+                showTimeZonePicker = false
+            },
+            onDismiss = { showTimeZonePicker = false },
         )
     }
 
@@ -1760,6 +1776,179 @@ private fun StartEditorFields(
             },
         )
     }
+}
+
+private data class TimeZoneOption(
+    val zoneId: String,
+    val offsetSeconds: Int,
+    val offsetLabel: String,
+)
+
+@Composable
+private fun TimeZonePickerDialog(
+    selectedZoneId: String,
+    referenceLocalDateTime: LocalDateTime,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val deviceZoneId = remember { ZoneId.systemDefault().id }
+    val options = remember(referenceLocalDateTime) {
+        ZoneId.getAvailableZoneIds()
+            .map { zoneId ->
+                val offset = ZoneId.of(zoneId).rules.getOffset(referenceLocalDateTime)
+                TimeZoneOption(
+                    zoneId = zoneId,
+                    offsetSeconds = offset.totalSeconds,
+                    offsetLabel = buildString {
+                        append("UTC")
+                        if (offset == ZoneOffset.UTC) {
+                            append("+00:00")
+                        } else {
+                            append(offset.id)
+                        }
+                    },
+                )
+            }
+            .sortedWith(
+                compareBy<TimeZoneOption> { it.offsetSeconds }
+                    .thenBy { it.zoneId }
+            )
+    }
+    var query by remember { mutableStateOf("") }
+    val filteredOptions = remember(query, options) {
+        val normalizedQuery = query.trim()
+        if (normalizedQuery.isEmpty()) {
+            options
+        } else {
+            options.filter { option ->
+                option.zoneId.contains(normalizedQuery, ignoreCase = true) ||
+                    option.zoneId
+                        .replace('_', ' ')
+                        .contains(normalizedQuery, ignoreCase = true) ||
+                    option.offsetLabel.contains(normalizedQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    AlertDialog(
+        modifier = Modifier.testTag("start-zone-picker-dialog"),
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                modifier = Modifier.semantics { heading() },
+                text = stringResource(R.string.select_time_zone_title),
+            )
+        },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("start-zone-search"),
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text(stringResource(R.string.search_time_zones)) },
+                    supportingText = {
+                        Text(stringResource(R.string.search_time_zones_hint))
+                    },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
+                )
+
+                if (query.isBlank()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("device-time-zone-option")
+                            .selectable(
+                                selected = selectedZoneId == deviceZoneId,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(deviceZoneId) },
+                            )
+                            .semantics(mergeDescendants = true) {}
+                            .padding(horizontal = 4.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        RadioButton(
+                            modifier = Modifier.clearAndSetSemantics {},
+                            selected = selectedZoneId == deviceZoneId,
+                            onClick = null,
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.use_device_time_zone),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            Text(
+                                text = deviceZoneId,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
+
+                if (filteredOptions.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.no_time_zones_found),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 320.dp),
+                    ) {
+                        items(
+                            items = filteredOptions,
+                            key = { it.zoneId },
+                        ) { option ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("start-zone-option-${option.zoneId}")
+                                    .selectable(
+                                        selected = selectedZoneId == option.zoneId,
+                                        role = Role.RadioButton,
+                                        onClick = { onSelect(option.zoneId) },
+                                    )
+                                    .semantics(mergeDescendants = true) {}
+                                    .padding(horizontal = 4.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                RadioButton(
+                                    modifier = Modifier.clearAndSetSemantics {},
+                                    selected = selectedZoneId == option.zoneId,
+                                    onClick = null,
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = option.zoneId,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                    )
+                                    Text(
+                                        text = option.offsetLabel,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable

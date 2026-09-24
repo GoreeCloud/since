@@ -23,7 +23,12 @@
     <string name="select_time_title">اختر الوقت</string>
     <string name="done">تم</string>
     <string name="start_zone_label">المنطقة الزمنية</string>
-    <string name="start_zone_hint">استخدم منطقة IANA مثل America/Chicago.</string>
+    <string name="start_zone_picker_hint">اختر المنطقة الزمنية التي تنطبق على وقت البدء هذا.</string>
+    <string name="select_time_zone_title">اختر المنطقة الزمنية</string>
+    <string name="search_time_zones">البحث في المناطق الزمنية</string>
+    <string name="search_time_zones_hint">ابحث حسب المدينة أو المنطقة أو إزاحة UTC.</string>
+    <string name="use_device_time_zone">استخدام المنطقة الزمنية للجهاز</string>
+    <string name="no_time_zones_found">لا توجد مناطق زمنية مطابقة.</string>
     <string name="use_now">استخدام الآن</string>
     <string name="dst_overlap_policy">تُرفض الفجوات الناتجة عن التوقيت الصيفي. أثناء التداخل عند الرجوع بالساعة، يستخدم Since الإزاحة الصالحة الأسبق.</string>
     <string name="icon_accent_deferred">يبقى اختيار الأيقونة واللون المميز مؤجلاً حتى تتوفر خريطة GLAZE معتمدة خاصة بـ Since.</string>

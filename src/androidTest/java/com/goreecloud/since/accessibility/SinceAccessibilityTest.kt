@@ -115,7 +115,7 @@ class SinceAccessibilityTest {
     }
 
     @Test
-    fun dateAndTimePickersAreReachableAndCreateThenEditPersists() {
+    fun dateTimeAndZonePickersAreReachableAndCreateThenEditPersists() {
         val repository = FakeTrackerRepository(
             initial = emptyList(),
             clock = clock,
@@ -151,6 +151,15 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithTag("start-time-picker-dialog").assertIsDisplayed()
         composeRule.onNodeWithText("Done").performClick()
 
+        composeRule
+            .onNodeWithTag("start-zone-picker")
+            .performScrollTo()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.onNodeWithTag("start-zone-picker-dialog").assertIsDisplayed()
+        composeRule.onNodeWithTag("start-zone-search").performTextInput("Asia/Tokyo")
+        composeRule.onNodeWithTag("start-zone-option-Asia/Tokyo").performClick()
+
         composeRule.onNodeWithText("Save").performScrollTo().performClick()
 
         composeRule.waitForIdle()
@@ -165,7 +174,7 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithText("First car edited").assertIsDisplayed()
         assertEquals("First car edited", repository.current.single().tracker.title)
         assertEquals(
-            ZoneId.systemDefault().id,
+            "Asia/Tokyo",
             repository.current.single().periods.single().startZoneId,
         )
     }
@@ -194,7 +203,7 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithTag("title-field").assertIsDisplayed()
         composeRule.onNodeWithTag("start-date-picker").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("start-time-picker").performScrollTo().assertIsDisplayed()
-        composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("start-zone-picker").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
     }
 
@@ -220,7 +229,7 @@ class SinceAccessibilityTest {
             .onNodeWithText("Create Permanent Event")
             .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
         composeRule.onNodeWithTag("title-field").assertIsDisplayed()
-        composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("start-zone-picker").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
     }
 

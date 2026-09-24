@@ -88,6 +88,11 @@ class SinceVisualEvidenceTest {
         composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
         capture("create-streak-dark")
 
+        composeRule.onNodeWithTag("start-zone-picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("start-zone-picker-dialog").assertIsDisplayed()
+        capture("time-zone-picker-dark")
+        composeRule.onNodeWithTag("device-time-zone-option").performClick()
+
         composeRule.onNodeWithTag("title-field").performTextInput("Read daily")
         composeRule.onNodeWithText("Save").performScrollTo().performClick()
 
@@ -118,6 +123,11 @@ class SinceVisualEvidenceTest {
         composeRule.onNodeWithTag("tracker-type-streak").performClick()
         composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
         capture("create-streak")
+
+        composeRule.onNodeWithTag("start-zone-picker").performScrollTo().performClick()
+        composeRule.onNodeWithTag("start-zone-picker-dialog").assertIsDisplayed()
+        capture("time-zone-picker")
+        composeRule.onNodeWithTag("device-time-zone-option").performClick()
 
         composeRule.onNodeWithText("Cancel").performClick()
     }

@@ -22,7 +22,12 @@
     <string name="select_time_title">Select time</string>
     <string name="done">Done</string>
     <string name="start_zone_label">Time zone</string>
-    <string name="start_zone_hint">Use an IANA zone such as America/Chicago.</string>
+    <string name="start_zone_picker_hint">Choose the time zone that applies to this start time.</string>
+    <string name="select_time_zone_title">Select time zone</string>
+    <string name="search_time_zones">Search time zones</string>
+    <string name="search_time_zones_hint">Search by city, region, or UTC offset.</string>
+    <string name="use_device_time_zone">Use device time zone</string>
+    <string name="no_time_zones_found">No matching time zones.</string>
     <string name="use_now">Use now</string>
     <string name="dst_overlap_policy">Daylight-saving gaps are rejected. During a fall-back overlap, Since uses the earlier valid offset.</string>
     <string name="icon_accent_deferred">Icon and accent selection remain deferred until an approved Since-specific GLAZE mapping exists.</string>
