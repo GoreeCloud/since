@@ -2,21 +2,30 @@ package com.goreecloud.since.accessibility
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.InputMode.Companion.Keyboard
+import androidx.compose.ui.input.InputModeManager
+import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.requestFocus
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import com.goreecloud.since.domain.model.DisplayFormat
@@ -204,6 +213,52 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithTag("title-field").assertIsDisplayed()
         composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
+    }
+
+    @OptIn(ExperimentalTestApi::class, ExperimentalComposeUiApi::class)
+    @Test
+    fun keyboardTabMovesFromCancelToSaveAndEnterActivatesSave() {
+        lateinit var inputModeManager: InputModeManager
+
+        composeRule.setContent {
+            inputModeManager = LocalInputModeManager.current
+            MaterialTheme {
+                SinceApp(
+                    repository = FakeTrackerRepository(emptyList()),
+                    clock = clock,
+                )
+            }
+        }
+
+        composeRule.runOnIdle {
+            inputModeManager.requestInputMode(Keyboard)
+        }
+
+        composeRule.onNodeWithText("Add tracker").performClick()
+        composeRule.onNodeWithText("Permanent Event").performClick()
+
+        val cancel = composeRule
+            .onNodeWithText("Cancel")
+            .performScrollTo()
+            .requestFocus()
+            .assertIsFocused()
+
+        cancel.performKeyInput {
+            keyDown(Key.Tab)
+            keyUp(Key.Tab)
+        }
+
+        composeRule
+            .onNodeWithText("Save")
+            .assertIsFocused()
+            .performKeyInput {
+                keyDown(Key.Enter)
+                keyUp(Key.Enter)
+            }
+
+        composeRule
+            .onNodeWithText("Title must contain between 1 and 80 Unicode characters.")
+            .assertIsDisplayed()
     }
 
     private fun sampleAggregate(): TrackerAggregate {
