@@ -1,6 +1,7 @@
 package com.goreecloud.since.domain.repository
 
 import com.goreecloud.since.domain.model.DisplayFormat
+import com.goreecloud.since.domain.model.Goal
 import com.goreecloud.since.domain.model.Tracker
 import com.goreecloud.since.domain.model.TrackerAggregate
 import com.goreecloud.since.domain.validation.ValidatedTrackerDraft
@@ -24,4 +25,12 @@ interface TrackerRepository {
         trackerId: String,
         displayFormat: DisplayFormat,
     ): Boolean
+
+    suspend fun updateGoal(
+        trackerId: String,
+        targetAmount: Int,
+        targetUnit: DisplayFormat,
+    ): Goal?
+
+    suspend fun removeGoal(trackerId: String): Boolean
 }

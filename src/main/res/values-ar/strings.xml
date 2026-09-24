@@ -32,6 +32,20 @@
     <string name="goal_amount_label">القيمة المستهدفة</string>
     <string name="goal_unit_label">وحدة الهدف</string>
     <string name="goal_summary">الهدف: %1$d %2$s</string>
+    <string name="goal_progress_label">التقدم</string>
+    <string name="goal_progress_percent">%1$d%%</string>
+    <string name="goal_progress_complete">%1$d%% · تم بلوغ الهدف</string>
+    <string name="goal_estimated_completion">الإكمال المتوقع: %1$s</string>
+    <string name="edit_goal">تعديل الهدف</string>
+    <string name="add_goal">إضافة هدف</string>
+    <string name="no_goal">لم يتم تعيين هدف.</string>
+    <string name="goal_editor_title">الهدف</string>
+    <string name="goal_amount_error">يجب أن تكون القيمة المستهدفة بين 1 و100,000.</string>
+    <string name="goal_save_failed">تعذر تحديث هذا الهدف.</string>
+    <string name="remove_goal">إزالة الهدف</string>
+    <string name="remove_goal_title">إزالة الهدف؟</string>
+    <string name="remove_goal_message">يؤدي هذا إلى إزالة القيمة المستهدفة فقط. تبقى السلسلة وسجل الفترات دون تغيير.</string>
+    <string name="remove">إزالة</string>
 
     <string name="elapsed_label">المنقضي</string>
     <string name="elapsed_days_detail">%1$d يوم · %2$d ساعة · %3$d دقيقة</string>
@@ -45,12 +59,9 @@
     <string name="edit_tracker_title">تعديل %1$s</string>
     <string name="edit_history_boundary">يمكن تغيير بداية الفترة الحالية المفتوحة فقط. يظل سجل السلسلة المغلق غير قابل للتعديل.</string>
     <string name="edit_history_conflict">لا يمكن أن تكون بداية السلسلة الحالية أسبق من نهاية السجل المغلق الموجود.</string>
-    <string name="goal_edit_deferred">يبقى تعديل الهدف ضمن مرحلة أهداف M2.</string>
     <string name="started_on_label">بدأ في</string>
     <string name="no_note">لا توجد ملاحظة</string>
     <string name="display_format_update_failed">تعذر تحديث تنسيق العرض.</string>
-    <string name="goal_progress_deferred">يبقى التقدم والوقت المقدر للإكمال ضمن مرحلة أهداف M2.</string>
-    <string name="details_development_boundary">تبقى الأرشفة والحذف وإعادة الضبط/السجل وتقدم الهدف/المحرر واختيار الأيقونة/اللون المميز والمشاركة ضمن مراحل تطوير لاحقة.</string>
 
     <string name="save">حفظ</string>
     <string name="saving">جارٍ الحفظ…</string>

@@ -120,6 +120,20 @@ class RoomTrackerRepository(
         updatedAtEpochMs = clock.millis(),
     ) == 1
 
+    override suspend fun updateGoal(
+        trackerId: String,
+        targetAmount: Int,
+        targetUnit: DisplayFormat,
+    ): Goal? = dao.upsertGoal(
+        eventId = trackerId,
+        targetAmount = targetAmount,
+        targetUnit = targetUnit.name,
+        updatedAtEpochMs = clock.millis(),
+    )?.toDomain()
+
+    override suspend fun removeGoal(trackerId: String): Boolean =
+        dao.removeGoal(trackerId)
+
     private fun PersistedTrackerAggregate.toDomain(): TrackerAggregate =
         TrackerAggregate(
             tracker = tracker.toDomain(),

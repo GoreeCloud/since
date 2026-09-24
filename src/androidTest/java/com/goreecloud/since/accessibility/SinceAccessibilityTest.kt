@@ -261,6 +261,43 @@ class SinceAccessibilityTest {
             .assertIsDisplayed()
     }
 
+    @Test
+    fun goalEditorUpdatesAndRemovesGoalWithoutChangingStreakHistory() {
+        val repository = FakeTrackerRepository(
+            initial = listOf(sampleAggregate()),
+            clock = clock,
+        )
+
+        composeRule.setContent {
+            MaterialTheme {
+                SinceApp(
+                    repository = repository,
+                    clock = clock,
+                )
+            }
+        }
+
+        val originalPeriod = repository.current.single().periods.single()
+
+        composeRule.onNodeWithText("Read daily").performClick()
+        composeRule.onNodeWithText("Edit goal").performScrollTo().performClick()
+        composeRule.onNodeWithTag("goal-amount-field", useUnmergedTree = true).performTextClearance()
+        composeRule.onNodeWithTag("goal-amount-field", useUnmergedTree = true).performTextInput("14")
+        composeRule.onNodeWithText("Save").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(14, repository.current.single().goal!!.targetAmount)
+        assertEquals(originalPeriod, repository.current.single().periods.single())
+
+        composeRule.onNodeWithText("Edit goal").performScrollTo().performClick()
+        composeRule.onNodeWithText("Remove goal").performClick()
+        composeRule.onNodeWithText("Remove").performClick()
+        composeRule.waitForIdle()
+
+        assertEquals(null, repository.current.single().goal)
+        assertEquals(originalPeriod, repository.current.single().periods.single())
+    }
+
     private fun sampleAggregate(): TrackerAggregate {
         val trackerId = "tracker-accessibility"
         return TrackerAggregate(
@@ -398,6 +435,39 @@ private class FakeTrackerRepository(
             if (row.tracker.id == trackerId) updated else row
         }
         return updated
+    }
+
+    override suspend fun updateGoal(
+        trackerId: String,
+        targetAmount: Int,
+        targetUnit: DisplayFormat,
+    ): Goal? {
+        val existing = loadTracker(trackerId) ?: return null
+        if (existing.tracker.kind != TrackerKind.STREAK || targetAmount !in 1..100_000) return null
+        val timestamp = clock.millis()
+        val currentGoal = existing.goal
+        val updatedGoal = Goal(
+            trackerId = trackerId,
+            targetAmount = targetAmount,
+            targetUnit = targetUnit,
+            createdAtEpochMs = currentGoal?.createdAtEpochMs ?: timestamp,
+            updatedAtEpochMs = timestamp,
+        )
+        val updated = existing.copy(goal = updatedGoal)
+        aggregates.value = aggregates.value.map { row ->
+            if (row.tracker.id == trackerId) updated else row
+        }
+        return updatedGoal
+    }
+
+    override suspend fun removeGoal(trackerId: String): Boolean {
+        val existing = loadTracker(trackerId) ?: return false
+        if (existing.tracker.kind != TrackerKind.STREAK) return false
+        val updated = existing.copy(goal = null)
+        aggregates.value = aggregates.value.map { row ->
+            if (row.tracker.id == trackerId) updated else row
+        }
+        return true
     }
 
     override suspend fun updateDisplayFormat(

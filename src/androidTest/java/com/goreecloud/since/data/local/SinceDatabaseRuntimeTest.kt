@@ -20,6 +20,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -383,6 +384,73 @@ class SinceDatabaseRuntimeTest {
             DisplayFormat.MONTHS,
             repository.loadTracker(tracker.id)!!.tracker.defaultDisplayFormat,
         )
+    }
+
+    @Test
+    fun goalUpdateAndRemovalArePersistedAndReactiveForStreaksOnly() = runBlocking {
+        val now = Instant.parse("2026-09-24T12:00:00Z")
+        val clock = Clock.fixed(now, ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+
+        val streak = trackerEntity(id = "goal-streak", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = streak,
+            initialPeriod = periodEntity(
+                id = "goal-streak-period",
+                eventId = streak.id,
+                sequence = 0,
+                start = now.minusSeconds(3_600).toEpochMilli(),
+            ),
+            goal = null,
+        )
+
+        val emitted = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(5_000) {
+                repository.observeActiveTrackerAggregates().first { aggregates ->
+                    aggregates.singleOrNull()?.goal?.targetAmount == 14
+                }
+            }
+        }
+
+        val created = repository.updateGoal(
+            trackerId = streak.id,
+            targetAmount = 14,
+            targetUnit = DisplayFormat.DAYS,
+        )
+        assertNotNull(created)
+        assertEquals(14, emitted.await().single().goal!!.targetAmount)
+
+        val createdAt = created!!.createdAtEpochMs
+        val changed = repository.updateGoal(
+            trackerId = streak.id,
+            targetAmount = 2,
+            targetUnit = DisplayFormat.WEEKS,
+        )
+        assertNotNull(changed)
+        assertEquals(createdAt, changed!!.createdAtEpochMs)
+        assertEquals(2, changed.targetAmount)
+        assertEquals(DisplayFormat.WEEKS, changed.targetUnit)
+
+        assertTrue(repository.removeGoal(streak.id))
+        assertEquals(null, repository.loadTracker(streak.id)!!.goal)
+        assertTrue(repository.removeGoal(streak.id))
+
+        val event = trackerEntity(id = "goal-event", kind = TrackerKind.EVENT)
+        dao.createTrackerAggregate(
+            tracker = event,
+            initialPeriod = periodEntity(
+                id = "goal-event-period",
+                eventId = event.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = null,
+        )
+        assertEquals(
+            null,
+            repository.updateGoal(event.id, 10, DisplayFormat.DAYS),
+        )
+        assertFalse(repository.removeGoal(event.id))
     }
 
     @Test

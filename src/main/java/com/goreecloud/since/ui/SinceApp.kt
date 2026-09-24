@@ -23,6 +23,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
@@ -59,6 +60,8 @@ import com.goreecloud.since.domain.model.TrackerAggregate
 import com.goreecloud.since.domain.model.TrackerKind
 import com.goreecloud.since.domain.repository.TrackerRepository
 import com.goreecloud.since.domain.time.ElapsedResult
+import com.goreecloud.since.domain.time.GoalEstimateResult
+import com.goreecloud.since.domain.time.GoalEstimator
 import com.goreecloud.since.domain.time.TimeEngine
 import com.goreecloud.since.domain.time.TrackerStartInput
 import com.goreecloud.since.domain.time.TrackerStartResolution
@@ -92,7 +95,9 @@ fun SinceApp(
     var validationErrors by remember { mutableStateOf(emptyList<String>()) }
     var saveFailed by rememberSaveable { mutableStateOf(false) }
     var detailUpdateFailed by rememberSaveable { mutableStateOf(false) }
+    var goalUpdateFailed by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    var isGoalSaving by remember { mutableStateOf(false) }
     val historyConflictMessage = stringResource(R.string.edit_history_conflict)
 
     val editorKind = editorKindName?.let { runCatching { TrackerKind.valueOf(it) }.getOrNull() }
@@ -209,10 +214,13 @@ fun SinceApp(
             aggregate = selectedAggregate,
             clock = clock,
             updateFailed = detailUpdateFailed,
+            goalUpdateFailed = goalUpdateFailed,
+            isGoalSaving = isGoalSaving,
             onBack = {
                 selectedTrackerId = null
                 editingTrackerId = null
                 detailUpdateFailed = false
+                goalUpdateFailed = false
             },
             onEdit = {
                 validationErrors = emptyList()
@@ -231,6 +239,32 @@ fun SinceApp(
                         }.getOrDefault(false)
                         if (!updated) detailUpdateFailed = true
                     }
+                }
+            },
+            onUpdateGoal = { amount, unit ->
+                goalUpdateFailed = false
+                isGoalSaving = true
+                scope.launch {
+                    val updated = runCatching {
+                        repository.updateGoal(
+                            trackerId = selectedAggregate.tracker.id,
+                            targetAmount = amount,
+                            targetUnit = unit,
+                        )
+                    }.getOrNull()
+                    goalUpdateFailed = updated == null
+                    isGoalSaving = false
+                }
+            },
+            onRemoveGoal = {
+                goalUpdateFailed = false
+                isGoalSaving = true
+                scope.launch {
+                    val removed = runCatching {
+                        repository.removeGoal(selectedAggregate.tracker.id)
+                    }.getOrDefault(false)
+                    goalUpdateFailed = !removed
+                    isGoalSaving = false
                 }
             },
         )
@@ -263,6 +297,7 @@ fun SinceApp(
             onAddTracker = onAddTracker,
             onOpenTracker = { trackerId ->
                 detailUpdateFailed = false
+                goalUpdateFailed = false
                 selectedTrackerId = trackerId
             },
         )
@@ -460,20 +495,55 @@ private fun TrackerCard(
             )
 
             aggregate.goal?.let { goal ->
+                val estimate = remember(aggregate, tick, clock) {
+                    GoalEstimator(clock).estimate(
+                        startEpochMs = currentPeriod.startEpochMs,
+                        zoneId = currentPeriod.startZoneId,
+                        targetAmount = goal.targetAmount,
+                        targetUnit = goal.targetUnit,
+                    )
+                }
                 Surface(
                     shape = MaterialTheme.shapes.small,
                     color = MaterialTheme.colorScheme.tertiaryContainer,
                 ) {
-                    Text(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        text = stringResource(
-                            R.string.goal_summary,
-                            goal.targetAmount,
-                            displayFormatLabel(goal.targetUnit),
-                        ),
-                        color = MaterialTheme.colorScheme.onTertiaryContainer,
-                        style = MaterialTheme.typography.labelLarge,
-                    )
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.goal_summary,
+                                goal.targetAmount,
+                                displayFormatLabel(goal.targetUnit),
+                            ),
+                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                        when (estimate) {
+                            GoalEstimateResult.ClockInconsistency -> Text(
+                                text = stringResource(R.string.clock_inconsistency),
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+
+                            is GoalEstimateResult.Value -> Text(
+                                text = if (estimate.estimate.isComplete) {
+                                    stringResource(
+                                        R.string.goal_progress_complete,
+                                        estimate.estimate.percent,
+                                    )
+                                } else {
+                                    stringResource(
+                                        R.string.goal_progress_percent,
+                                        estimate.estimate.percent,
+                                    )
+                                },
+                                color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -485,9 +555,13 @@ private fun TrackerDetailsScreen(
     aggregate: TrackerAggregate,
     clock: Clock,
     updateFailed: Boolean,
+    goalUpdateFailed: Boolean,
+    isGoalSaving: Boolean,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onDisplayFormatChange: (DisplayFormat) -> Unit,
+    onUpdateGoal: (Int, DisplayFormat) -> Unit,
+    onRemoveGoal: () -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
     val tick by rememberMinuteTick(
@@ -505,6 +579,18 @@ private fun TrackerDetailsScreen(
         val zone = ZoneId.of(currentPeriod.startZoneId)
         DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
             .format(Instant.ofEpochMilli(currentPeriod.startEpochMs).atZone(zone))
+    }
+
+    var showGoalEditor by rememberSaveable(aggregate.tracker.id) { mutableStateOf(false) }
+    val goalEstimate = aggregate.goal?.let { goal ->
+        remember(aggregate, tick, clock) {
+            GoalEstimator(clock).estimate(
+                startEpochMs = currentPeriod.startEpochMs,
+                zoneId = currentPeriod.startZoneId,
+                targetAmount = goal.targetAmount,
+                targetUnit = goal.targetUnit,
+            )
+        }
     }
 
     Scaffold(
@@ -610,21 +696,116 @@ private fun TrackerDetailsScreen(
                 }
             }
 
-            aggregate.goal?.let { goal ->
+            if (aggregate.tracker.kind == TrackerKind.STREAK) {
                 SectionCard {
-                    Text(
-                        text = stringResource(R.string.goal_label),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = stringResource(
-                            R.string.goal_summary,
-                            goal.targetAmount,
-                            displayFormatLabel(goal.targetUnit),
-                        ),
-                        color = MaterialTheme.colorScheme.tertiary,
-                        style = MaterialTheme.typography.headlineSmall,
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.goal_label),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        TextButton(
+                            onClick = { showGoalEditor = true },
+                            enabled = !isGoalSaving,
+                        ) {
+                            Text(
+                                if (aggregate.goal == null) {
+                                    stringResource(R.string.add_goal)
+                                } else {
+                                    stringResource(R.string.edit_goal)
+                                }
+                            )
+                        }
+                    }
+
+                    val goal = aggregate.goal
+                    if (goal == null) {
+                        Text(
+                            text = stringResource(R.string.no_goal),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    } else {
+                        Text(
+                            text = stringResource(
+                                R.string.goal_summary,
+                                goal.targetAmount,
+                                displayFormatLabel(goal.targetUnit),
+                            ),
+                            color = MaterialTheme.colorScheme.tertiary,
+                            style = MaterialTheme.typography.headlineSmall,
+                        )
+                        when (val estimate = goalEstimate) {
+                            GoalEstimateResult.ClockInconsistency -> Text(
+                                text = stringResource(R.string.clock_inconsistency),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+
+                            is GoalEstimateResult.Value -> {
+                                Text(
+                                    text = stringResource(R.string.goal_progress_label),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.labelLarge,
+                                )
+                                LinearProgressIndicator(
+                                    progress = {
+                                        estimate.estimate.progressFraction
+                                            .toFloat()
+                                            .coerceIn(0f, 1f)
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                                Text(
+                                    text = if (estimate.estimate.isComplete) {
+                                        stringResource(
+                                            R.string.goal_progress_complete,
+                                            estimate.estimate.percent,
+                                        )
+                                    } else {
+                                        stringResource(
+                                            R.string.goal_progress_percent,
+                                            estimate.estimate.percent,
+                                        )
+                                    },
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                )
+                                val targetZone = ZoneId.of(currentPeriod.startZoneId)
+                                val targetText = DateTimeFormatter
+                                    .ofLocalizedDateTime(FormatStyle.MEDIUM)
+                                    .format(
+                                        Instant
+                                            .ofEpochMilli(estimate.estimate.targetEpochMs)
+                                            .atZone(targetZone)
+                                    )
+                                Text(
+                                    text = stringResource(
+                                        R.string.goal_estimated_completion,
+                                        targetText,
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                )
+                            }
+
+                            null -> Unit
+                        }
+                    }
+
+                    if (goalUpdateFailed) {
+                        Text(
+                            modifier = Modifier.semantics {
+                                liveRegion = LiveRegionMode.Assertive
+                            },
+                            text = stringResource(R.string.goal_save_failed),
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
                 }
             }
 
@@ -640,6 +821,186 @@ private fun TrackerDetailsScreen(
                 )
             }
         }
+    }
+
+    if (showGoalEditor && aggregate.tracker.kind == TrackerKind.STREAK) {
+        GoalEditorDialog(
+            currentGoal = aggregate.goal,
+            currentPeriod = currentPeriod,
+            clock = clock,
+            isSaving = isGoalSaving,
+            onDismiss = { showGoalEditor = false },
+            onSave = { amount, unit ->
+                onUpdateGoal(amount, unit)
+                showGoalEditor = false
+            },
+            onRemove = if (aggregate.goal == null) {
+                null
+            } else {
+                {
+                    onRemoveGoal()
+                    showGoalEditor = false
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun GoalEditorDialog(
+    currentGoal: com.goreecloud.since.domain.model.Goal?,
+    currentPeriod: com.goreecloud.since.domain.model.TrackerPeriod,
+    clock: Clock,
+    isSaving: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (Int, DisplayFormat) -> Unit,
+    onRemove: (() -> Unit)?,
+) {
+    var amountText by rememberSaveable(currentPeriod.trackerId) {
+        mutableStateOf(currentGoal?.targetAmount?.toString().orEmpty())
+    }
+    var unitName by rememberSaveable(currentPeriod.trackerId) {
+        mutableStateOf(currentGoal?.targetUnit?.name ?: DisplayFormat.DAYS.name)
+    }
+    var amountError by remember { mutableStateOf(false) }
+    var confirmRemove by remember { mutableStateOf(false) }
+    val unit = DisplayFormat.valueOf(unitName)
+    val amount = amountText.toIntOrNull()
+    val preview = if (amount != null && amount in 1..100_000) {
+        remember(currentPeriod, amount, unit, clock) {
+            GoalEstimator(clock).estimate(
+                startEpochMs = currentPeriod.startEpochMs,
+                zoneId = currentPeriod.startZoneId,
+                targetAmount = amount,
+                targetUnit = unit,
+            )
+        }
+    } else {
+        null
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                modifier = Modifier.semantics { heading() },
+                text = stringResource(R.string.goal_editor_title),
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("goal-amount-field"),
+                    value = amountText,
+                    onValueChange = {
+                        amountText = it.filter(Char::isDigit)
+                        amountError = false
+                    },
+                    label = { Text(stringResource(R.string.goal_amount_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    enabled = !isSaving,
+                    singleLine = true,
+                    isError = amountError,
+                )
+                FormatSelector(
+                    title = stringResource(R.string.goal_unit_label),
+                    selected = unit,
+                    enabled = !isSaving,
+                    onSelect = { unitName = it.name },
+                )
+                if (amountError) {
+                    Text(
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Assertive
+                        },
+                        text = stringResource(R.string.goal_amount_error),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (preview is GoalEstimateResult.Value) {
+                    val zone = ZoneId.of(currentPeriod.startZoneId)
+                    val targetText = DateTimeFormatter
+                        .ofLocalizedDateTime(FormatStyle.MEDIUM)
+                        .format(
+                            Instant
+                                .ofEpochMilli(preview.estimate.targetEpochMs)
+                                .atZone(zone)
+                        )
+                    Text(
+                        text = stringResource(
+                            R.string.goal_estimated_completion,
+                            targetText,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+                if (onRemove != null) {
+                    TextButton(
+                        onClick = { confirmRemove = true },
+                        enabled = !isSaving,
+                    ) {
+                        Text(stringResource(R.string.remove_goal))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    val parsed = amountText.toIntOrNull()
+                    if (parsed == null || parsed !in 1..100_000) {
+                        amountError = true
+                    } else {
+                        onSave(parsed, unit)
+                    }
+                },
+                enabled = !isSaving,
+            ) {
+                Text(
+                    if (isSaving) {
+                        stringResource(R.string.saving)
+                    } else {
+                        stringResource(R.string.save)
+                    }
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSaving,
+            ) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
+
+    if (confirmRemove && onRemove != null) {
+        AlertDialog(
+            onDismissRequest = { confirmRemove = false },
+            title = { Text(stringResource(R.string.remove_goal_title)) },
+            text = { Text(stringResource(R.string.remove_goal_message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = onRemove,
+                    enabled = !isSaving,
+                ) {
+                    Text(stringResource(R.string.remove))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { confirmRemove = false },
+                    enabled = !isSaving,
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
     }
 }
 

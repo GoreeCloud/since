@@ -90,6 +90,20 @@ abstract class TrackerDao {
         updatedAtEpochMs: Long,
     ): Int
 
+    @Query(
+        "UPDATE event_goals SET target_amount = :targetAmount, target_unit = :targetUnit, " +
+            "updated_at_epoch_ms = :updatedAtEpochMs WHERE event_id = :eventId"
+    )
+    protected abstract suspend fun updateGoalDefinition(
+        eventId: String,
+        targetAmount: Int,
+        targetUnit: String,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query("DELETE FROM event_goals WHERE event_id = :eventId")
+    protected abstract suspend fun deleteGoal(eventId: String): Int
+
     @Insert
     abstract suspend fun insertTrackedEvent(entity: TrackedEventEntity)
 
@@ -172,6 +186,50 @@ abstract class TrackerDao {
         ) { "tracker edit did not update exactly one open current period" }
 
         return readAggregate(eventId)
+    }
+
+    @Transaction
+    open suspend fun upsertGoal(
+        eventId: String,
+        targetAmount: Int,
+        targetUnit: String,
+        updatedAtEpochMs: Long,
+    ): EventGoalEntity? {
+        val tracker = readTrackedEvent(eventId) ?: return null
+        if (tracker.isArchived || tracker.kind != TrackerKind.STREAK.name) return null
+        if (targetAmount !in 1..100_000) return null
+
+        val existing = readGoal(eventId)
+        if (existing == null) {
+            insertGoal(
+                EventGoalEntity(
+                    eventId = eventId,
+                    targetAmount = targetAmount,
+                    targetUnit = targetUnit,
+                    createdAtEpochMs = updatedAtEpochMs,
+                    updatedAtEpochMs = updatedAtEpochMs,
+                )
+            )
+        } else {
+            check(
+                updateGoalDefinition(
+                    eventId = eventId,
+                    targetAmount = targetAmount,
+                    targetUnit = targetUnit,
+                    updatedAtEpochMs = updatedAtEpochMs,
+                ) == 1
+            ) { "goal edit did not update exactly one goal row" }
+        }
+
+        return readGoal(eventId)
+    }
+
+    @Transaction
+    open suspend fun removeGoal(eventId: String): Boolean {
+        val tracker = readTrackedEvent(eventId) ?: return false
+        if (tracker.isArchived || tracker.kind != TrackerKind.STREAK.name) return false
+        val existing = readGoal(eventId) ?: return true
+        return deleteGoal(existing.eventId) == 1
     }
 
     @Transaction

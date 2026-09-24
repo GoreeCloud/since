@@ -31,6 +31,20 @@
     <string name="goal_amount_label">Target amount</string>
     <string name="goal_unit_label">Target unit</string>
     <string name="goal_summary">Goal: %1$d %2$s</string>
+    <string name="goal_progress_label">Progress</string>
+    <string name="goal_progress_percent">%1$d%%</string>
+    <string name="goal_progress_complete">%1$d%% · Goal reached</string>
+    <string name="goal_estimated_completion">Estimated completion: %1$s</string>
+    <string name="edit_goal">Edit goal</string>
+    <string name="add_goal">Add goal</string>
+    <string name="no_goal">No goal set.</string>
+    <string name="goal_editor_title">Goal</string>
+    <string name="goal_amount_error">Target amount must be between 1 and 100,000.</string>
+    <string name="goal_save_failed">Could not update this goal.</string>
+    <string name="remove_goal">Remove goal</string>
+    <string name="remove_goal_title">Remove goal?</string>
+    <string name="remove_goal_message">This removes the target only. Your streak and period history stay unchanged.</string>
+    <string name="remove">Remove</string>
 
     <string name="elapsed_label">Elapsed</string>
     <string name="elapsed_days_detail">%1$d d · %2$d h · %3$d min</string>
@@ -44,12 +58,9 @@
     <string name="edit_tracker_title">Edit %1$s</string>
     <string name="edit_history_boundary">Only the open current period start can change. Closed streak history remains immutable.</string>
     <string name="edit_history_conflict">Current streak start cannot be earlier than the end of existing closed history.</string>
-    <string name="goal_edit_deferred">Goal editing remains in the M2 goal increment.</string>
     <string name="started_on_label">Started on</string>
     <string name="no_note">No note</string>
     <string name="display_format_update_failed">Could not update the display format.</string>
-    <string name="goal_progress_deferred">Progress and estimated completion remain in the M2 goal increment.</string>
-    <string name="details_development_boundary">Archive, delete, reset/history, goal progress/editor, icon/accent selection, and sharing remain in later Development increments.</string>
 
     <string name="save">Save</string>
     <string name="saving">Saving…</string>
