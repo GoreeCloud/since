@@ -243,8 +243,8 @@ fun SinceApp(
                     showTypeChooser = true
                 },
                 shape = MaterialTheme.shapes.large,
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
                 content = { Text(stringResource(R.string.add_tracker)) },
             )
         },
@@ -425,9 +425,14 @@ private fun TrackerCard(
             }
 
             Text(
+                text = stringResource(R.string.elapsed_label),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
                 text = elapsedSummary(elapsed),
                 color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
             )
 
             aggregate.goal?.let { goal ->
@@ -506,7 +511,7 @@ private fun TrackerDetailsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.extraLarge,
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
                 ),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
             ) {
@@ -516,46 +521,46 @@ private fun TrackerDetailsScreen(
                 ) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
-                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                        color = MaterialTheme.colorScheme.primaryContainer,
                     ) {
                         Text(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             text = trackerKindLabel(aggregate.tracker.kind),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
                             style = MaterialTheme.typography.labelMedium,
                         )
                     }
                     Text(
                         modifier = Modifier.semantics { heading() },
                         text = aggregate.tracker.title,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.headlineMedium,
                     )
                     Text(
                         text = stringResource(R.string.elapsed_label),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelLarge,
                     )
                     SelectionContainer {
                         Text(
                             text = elapsedSummary(elapsed),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.displaySmall,
                         )
                     }
                     Text(
                         text = stringResource(R.string.started_on_label),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelLarge,
                     )
                     Text(
                         text = startedOn,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
                         text = currentPeriod.startZoneId,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -732,7 +737,7 @@ private fun TrackerTypeChooser(
                         .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.EVENT) },
                     shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(
                         1.dp,
                         MaterialTheme.colorScheme.outlineVariant,
@@ -760,10 +765,10 @@ private fun TrackerTypeChooser(
                         .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.STREAK) },
                     shape = MaterialTheme.shapes.large,
-                    color = MaterialTheme.colorScheme.primaryContainer,
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(
                         1.dp,
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                        MaterialTheme.colorScheme.outlineVariant,
                     ),
                 ) {
                     Column(
@@ -772,12 +777,12 @@ private fun TrackerTypeChooser(
                     ) {
                         Text(
                             text = stringResource(R.string.tracker_kind_streak),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.titleMedium,
                         )
                         Text(
                             text = stringResource(R.string.streak_description),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -851,6 +856,7 @@ private fun CreateTrackerScreen(
                     onValueChange = { title = it },
                     label = { Text(stringResource(R.string.title_label)) },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     enabled = !isSaving,
                 )
 
@@ -860,6 +866,7 @@ private fun CreateTrackerScreen(
                     onValueChange = { note = it },
                     label = { Text(stringResource(R.string.note_label)) },
                     minLines = 3,
+                    shape = MaterialTheme.shapes.medium,
                     enabled = !isSaving,
                 )
             }
@@ -1051,6 +1058,7 @@ private fun EditTrackerScreen(
                     onValueChange = { title = it },
                     label = { Text(stringResource(R.string.title_label)) },
                     singleLine = true,
+                    shape = MaterialTheme.shapes.medium,
                     enabled = !isSaving,
                 )
 
@@ -1060,6 +1068,7 @@ private fun EditTrackerScreen(
                     onValueChange = { note = it },
                     label = { Text(stringResource(R.string.note_label)) },
                     minLines = 3,
+                    shape = MaterialTheme.shapes.medium,
                     enabled = !isSaving,
                 )
             }
@@ -1179,6 +1188,7 @@ private fun StartEditorFields(
         label = { Text(stringResource(R.string.start_date_time_label)) },
         supportingText = { Text(TrackerStartInput.FORMAT_HINT) },
         singleLine = true,
+        shape = MaterialTheme.shapes.medium,
         enabled = enabled,
     )
     OutlinedTextField(
@@ -1190,6 +1200,7 @@ private fun StartEditorFields(
         label = { Text(stringResource(R.string.start_zone_label)) },
         supportingText = { Text(stringResource(R.string.start_zone_hint)) },
         singleLine = true,
+        shape = MaterialTheme.shapes.medium,
         enabled = enabled,
     )
     TextButton(
