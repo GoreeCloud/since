@@ -1,124 +1,142 @@
 package com.goreecloud.since.visual
 
-import android.app.UiModeManager
-import android.content.res.Configuration
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.graphics.Bitmap
-import android.os.Build
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.core.view.WindowCompat
 import androidx.test.platform.app.InstrumentationRegistry
-import com.goreecloud.since.MainActivity
+import com.goreecloud.since.testutil.FakeTrackerRepository
+import com.goreecloud.since.ui.SinceApp
+import com.goreecloud.since.ui.theme.SinceTheme
 import java.io.File
 import java.io.FileOutputStream
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneId
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * Captures exact Android-rendered Development evidence for the principal GoreeCloud Since flow.
+ * Captures deterministic Android-rendered Development evidence for the principal GoreeCloud Since
+ * flow.
+ *
+ * Theme evidence is switched inside the Compose tree instead of recreating the host Activity.
+ * Persistence and Activity-recreation behavior remain covered by the dedicated runtime tests; this
+ * visual test is intentionally responsible only for stable, reviewable UI evidence.
  *
  * These images are evidence inputs for human visual review. They do not, by themselves, establish
  * physical-device acceptance or downstream Glaze UI consumer conformance.
  */
 class SinceVisualEvidenceTest {
     @get:Rule
-    val composeRule = createAndroidComposeRule<MainActivity>()
+    val composeRule = createComposeRule()
+
+    private val clock = Clock.fixed(
+        Instant.parse("2026-09-24T19:00:00Z"),
+        ZoneId.of("UTC"),
+    )
 
     @Test
     fun capturePrincipalSinceFlow() {
-        try {
-            setNightMode(UiModeManager.MODE_NIGHT_NO)
-            waitForDisplayedText("Since")
-            capture("dashboard-empty")
+        val repository = FakeTrackerRepository(
+            initial = emptyList(),
+            clock = clock,
+        )
+        var darkTheme by mutableStateOf(false)
 
-            setNightMode(UiModeManager.MODE_NIGHT_YES)
-            waitForDisplayedText("Since")
-            capture("dashboard-empty-dark")
-
-            composeRule.onNodeWithText("Add tracker").performClick()
-            composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
-            capture("tracker-type-chooser-dark")
-
-            composeRule.onNodeWithTag("tracker-type-streak").performClick()
-            composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
-            capture("create-streak-dark")
-
-            composeRule.onNodeWithTag("title-field").performTextInput("Read daily")
-            composeRule.onNodeWithText("Save").performScrollTo().performClick()
-
-            composeRule.onNodeWithText("Read daily").assertIsDisplayed()
-            composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
-            capture("tracker-details-dark")
-
-            composeRule.onNodeWithText("Back").performClick()
-            composeRule.onNodeWithText("Read daily").assertIsDisplayed()
-            capture("dashboard-populated-dark")
-
-            setNightMode(UiModeManager.MODE_NIGHT_NO)
-            waitForDisplayedText("Read daily")
-            capture("dashboard-populated")
-
-            composeRule.onNodeWithText("Read daily").performClick()
-            composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
-            capture("tracker-details")
-
-            composeRule.onNodeWithText("Back").performClick()
-            composeRule.onNodeWithText("Add tracker").performClick()
-            composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
-            capture("tracker-type-chooser")
-
-            composeRule.onNodeWithTag("tracker-type-streak").performClick()
-            composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
-            capture("create-streak")
-
-            composeRule.onNodeWithText("Cancel").performClick()
-        } finally {
-            runCatching { setNightMode(UiModeManager.MODE_NIGHT_NO) }
-        }
-    }
-
-    private fun waitForDisplayedText(text: String) {
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            runCatching {
-                composeRule.onNodeWithText(text).assertIsDisplayed()
-            }.isSuccess
-        }
-    }
-
-    private fun setNightMode(mode: Int) {
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            "Rendered night-mode evidence requires Android 12 or newer."
-        }
-
-        val activityBeforeChange = composeRule.activity
-        val previousNightMask = activityBeforeChange.resources.configuration.uiMode and
-            Configuration.UI_MODE_NIGHT_MASK
-        val uiModeManager = InstrumentationRegistry.getInstrumentation()
-            .targetContext
-            .getSystemService(UiModeManager::class.java)
-        uiModeManager.setApplicationNightMode(mode)
-
-        val expectedNightMask = when (mode) {
-            UiModeManager.MODE_NIGHT_YES -> Configuration.UI_MODE_NIGHT_YES
-            else -> Configuration.UI_MODE_NIGHT_NO
-        }
-        composeRule.waitUntil(timeoutMillis = 10_000) {
-            val currentActivity = runCatching { composeRule.activity }.getOrNull()
-            currentActivity != null &&
-                (
-                    currentActivity.resources.configuration.uiMode and
-                        Configuration.UI_MODE_NIGHT_MASK
-                ) == expectedNightMask &&
-                (
-                    previousNightMask == expectedNightMask ||
-                        currentActivity !== activityBeforeChange
+        composeRule.setContent {
+            SinceTheme(darkTheme = darkTheme) {
+                VisualEvidenceSystemBars(darkTheme = darkTheme)
+                SinceApp(
+                    repository = repository,
+                    clock = clock,
                 )
+            }
+        }
+
+        composeRule.onNodeWithText("Since").assertIsDisplayed()
+        capture("dashboard-empty")
+
+        composeRule.runOnIdle {
+            darkTheme = true
         }
         composeRule.waitForIdle()
+        composeRule.onNodeWithText("Since").assertIsDisplayed()
+        capture("dashboard-empty-dark")
+
+        composeRule.onNodeWithText("Add tracker").performClick()
+        composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
+        capture("tracker-type-chooser-dark")
+
+        composeRule.onNodeWithTag("tracker-type-streak").performClick()
+        composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
+        capture("create-streak-dark")
+
+        composeRule.onNodeWithTag("title-field").performTextInput("Read daily")
+        composeRule.onNodeWithText("Save").performScrollTo().performClick()
+
+        composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+        composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
+        capture("tracker-details-dark")
+
+        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+        capture("dashboard-populated-dark")
+
+        composeRule.runOnIdle {
+            darkTheme = false
+        }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText("Read daily").assertIsDisplayed()
+        capture("dashboard-populated")
+
+        composeRule.onNodeWithText("Read daily").performClick()
+        composeRule.onNodeWithText("Elapsed").assertIsDisplayed()
+        capture("tracker-details")
+
+        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithText("Add tracker").performClick()
+        composeRule.onNodeWithText("Choose tracker type").assertIsDisplayed()
+        capture("tracker-type-chooser")
+
+        composeRule.onNodeWithTag("tracker-type-streak").performClick()
+        composeRule.onNodeWithText("Create Streak").assertIsDisplayed()
+        capture("create-streak")
+
+        composeRule.onNodeWithText("Cancel").performClick()
+    }
+
+    @Composable
+    private fun VisualEvidenceSystemBars(darkTheme: Boolean) {
+        val view = LocalView.current
+        val background = MaterialTheme.colorScheme.background.toArgb()
+
+        SideEffect {
+            val activity = view.context.findActivity() ?: return@SideEffect
+            activity.window.statusBarColor = background
+            activity.window.navigationBarColor = background
+            activity.window.isNavigationBarContrastEnforced = false
+            WindowCompat.getInsetsController(activity.window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
     }
 
     private fun capture(name: String) {
@@ -147,3 +165,11 @@ class SinceVisualEvidenceTest {
         }
     }
 }
+
+
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }

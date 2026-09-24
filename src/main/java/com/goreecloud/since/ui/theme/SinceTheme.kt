@@ -89,10 +89,11 @@ private val SinceShapes = Shapes(
  */
 @Composable
 fun SinceTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,
 ) {
     MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) SinceDarkColors else SinceLightColors,
+        colorScheme = if (darkTheme) SinceDarkColors else SinceLightColors,
         shapes = SinceShapes,
         content = content,
     )
