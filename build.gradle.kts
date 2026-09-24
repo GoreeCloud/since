@@ -68,6 +68,8 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.8.2")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.8.2")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:1.8.2")
 }

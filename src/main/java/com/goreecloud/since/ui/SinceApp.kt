@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -33,7 +35,14 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -269,6 +278,11 @@ private fun Dashboard(
         return
     }
 
+    val dashboardTick by rememberMinuteTick(
+        clock = clock,
+        key = "dashboard",
+    )
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -278,6 +292,7 @@ private fun Dashboard(
     ) {
         item {
             Text(
+                modifier = Modifier.semantics { heading() },
                 text = stringResource(R.string.dashboard_title),
                 style = MaterialTheme.typography.headlineLarge,
             )
@@ -290,6 +305,7 @@ private fun Dashboard(
             TrackerCard(
                 aggregate = aggregate,
                 clock = clock,
+                tick = dashboardTick,
                 onClick = { onOpenTracker(aggregate.tracker.id) },
             )
         }
@@ -309,6 +325,7 @@ private fun DashboardEmptyState(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
+            modifier = Modifier.semantics { heading() },
             text = stringResource(R.string.dashboard_title),
             style = MaterialTheme.typography.headlineLarge,
         )
@@ -330,13 +347,10 @@ private fun DashboardEmptyState(
 private fun TrackerCard(
     aggregate: TrackerAggregate,
     clock: Clock,
+    tick: Long,
     onClick: () -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
-    val tick by rememberMinuteTick(
-        clock = clock,
-        key = aggregate.tracker.id,
-    )
     val elapsed = remember(aggregate, tick, clock) {
         TimeEngine(clock).elapsedSince(
             startEpochMs = currentPeriod.startEpochMs,
@@ -346,7 +360,9 @@ private fun TrackerCard(
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
         onClick = onClick,
     ) {
         Column(
@@ -429,6 +445,7 @@ private fun TrackerDetailsScreen(
             }
 
             Text(
+                modifier = Modifier.semantics { heading() },
                 text = aggregate.tracker.title,
                 style = MaterialTheme.typography.headlineMedium,
             )
@@ -459,6 +476,9 @@ private fun TrackerDetailsScreen(
 
             if (updateFailed) {
                 Text(
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Assertive
+                    },
                     text = stringResource(R.string.display_format_update_failed),
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodyMedium,
@@ -683,6 +703,7 @@ private fun CreateTrackerScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
+                modifier = Modifier.semantics { heading() },
                 text = stringResource(
                     R.string.create_tracker_title,
                     trackerKindLabel(kind),
@@ -691,7 +712,9 @@ private fun CreateTrackerScreen(
             )
 
             OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("title-field"),
                 value = title,
                 onValueChange = { title = it },
                 label = { Text(stringResource(R.string.title_label)) },
@@ -743,7 +766,15 @@ private fun CreateTrackerScreen(
 
             if (kind == TrackerKind.STREAK) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = goalEnabled,
+                            enabled = !isSaving,
+                            role = Role.Switch,
+                            onValueChange = { goalEnabled = it },
+                        )
+                        .semantics(mergeDescendants = true) {},
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
@@ -758,8 +789,9 @@ private fun CreateTrackerScreen(
                         )
                     }
                     Switch(
+                        modifier = Modifier.clearAndSetSemantics {},
                         checked = goalEnabled,
-                        onCheckedChange = { goalEnabled = it },
+                        onCheckedChange = null,
                         enabled = !isSaving,
                     )
                 }
@@ -868,12 +900,15 @@ private fun EditTrackerScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
+                modifier = Modifier.semantics { heading() },
                 text = stringResource(R.string.edit_tracker_title, trackerKindLabel(tracker.kind)),
                 style = MaterialTheme.typography.headlineMedium,
             )
 
             OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("title-field"),
                 value = title,
                 onValueChange = { title = it },
                 label = { Text(stringResource(R.string.title_label)) },
@@ -1001,7 +1036,9 @@ private fun StartEditorFields(
             style = MaterialTheme.typography.titleMedium,
         )
         OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("start-date-time-field"),
             value = startDateTime,
             onValueChange = onStartDateTimeChange,
             label = { Text(stringResource(R.string.start_date_time_label)) },
@@ -1010,7 +1047,9 @@ private fun StartEditorFields(
             enabled = enabled,
         )
         OutlinedTextField(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag("start-zone-field"),
             value = startZoneId,
             onValueChange = onStartZoneIdChange,
             label = { Text(stringResource(R.string.start_zone_label)) },
@@ -1030,6 +1069,9 @@ private fun StartEditorFields(
         )
         if (startInputErrors.isNotEmpty()) {
             Text(
+                modifier = Modifier.semantics {
+                    liveRegion = LiveRegionMode.Assertive
+                },
                 text = startInputErrors.joinToString(separator = "\n"),
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodyMedium,
@@ -1045,6 +1087,9 @@ private fun EditorStatus(
 ) {
     if (validationErrors.isNotEmpty()) {
         Text(
+            modifier = Modifier.semantics {
+                liveRegion = LiveRegionMode.Assertive
+            },
             text = validationErrors.joinToString(separator = "\n"),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodyMedium,
@@ -1053,6 +1098,9 @@ private fun EditorStatus(
 
     if (saveFailed) {
         Text(
+            modifier = Modifier.semantics {
+                liveRegion = LiveRegionMode.Assertive
+            },
             text = stringResource(R.string.save_failed),
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodyMedium,
@@ -1107,11 +1155,21 @@ private fun FormatSelector(
         )
         DisplayFormat.entries.forEach { format ->
             Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selected == format,
+                        enabled = enabled,
+                        role = Role.RadioButton,
+                        onClick = { onSelect(format) },
+                    )
+                    .semantics(mergeDescendants = true) {},
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 RadioButton(
+                    modifier = Modifier.clearAndSetSemantics {},
                     selected = selected == format,
-                    onClick = { onSelect(format) },
+                    onClick = null,
                     enabled = enabled,
                 )
                 Text(
