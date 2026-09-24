@@ -1,5 +1,6 @@
 package com.goreecloud.since.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,11 +19,13 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -232,12 +235,16 @@ fun SinceApp(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
             ExtendedFloatingActionButton(
                 onClick = {
                     selectedTrackerId = null
                     showTypeChooser = true
                 },
+                shape = MaterialTheme.shapes.large,
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                 content = { Text(stringResource(R.string.add_tracker)) },
             )
         },
@@ -273,11 +280,6 @@ private fun Dashboard(
     clock: Clock,
     onOpenTracker: (String) -> Unit,
 ) {
-    if (aggregates.isEmpty()) {
-        DashboardEmptyState(innerPadding)
-        return
-    }
-
     val dashboardTick by rememberMinuteTick(
         clock = clock,
         key = "dashboard",
@@ -287,59 +289,84 @@ private fun Dashboard(
         modifier = Modifier
             .fillMaxSize()
             .padding(innerPadding),
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(
+            start = 20.dp,
+            top = 24.dp,
+            end = 20.dp,
+            bottom = 112.dp,
+        ),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Text(
-                modifier = Modifier.semantics { heading() },
-                text = stringResource(R.string.dashboard_title),
-                style = MaterialTheme.typography.headlineLarge,
-            )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    modifier = Modifier.semantics { heading() },
+                    text = stringResource(R.string.dashboard_title),
+                    style = MaterialTheme.typography.displaySmall,
+                )
+                if (aggregates.isNotEmpty()) {
+                    Text(
+                        text = stringResource(R.string.dashboard_empty_message),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
         }
 
-        items(
-            items = aggregates,
-            key = { it.tracker.id },
-        ) { aggregate ->
-            TrackerCard(
-                aggregate = aggregate,
-                clock = clock,
-                tick = dashboardTick,
-                onClick = { onOpenTracker(aggregate.tracker.id) },
-            )
+        if (aggregates.isEmpty()) {
+            item {
+                DashboardEmptyState()
+            }
+        } else {
+            items(
+                items = aggregates,
+                key = { it.tracker.id },
+            ) { aggregate ->
+                TrackerCard(
+                    aggregate = aggregate,
+                    clock = clock,
+                    tick = dashboardTick,
+                    onClick = { onOpenTracker(aggregate.tracker.id) },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun DashboardEmptyState(
-    innerPadding: PaddingValues,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(innerPadding)
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
+private fun DashboardEmptyState() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Text(
-            modifier = Modifier.semantics { heading() },
-            text = stringResource(R.string.dashboard_title),
-            style = MaterialTheme.typography.headlineLarge,
-        )
-        Text(
-            modifier = Modifier.padding(top = 12.dp),
-            text = stringResource(R.string.dashboard_empty_message),
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-        )
-        Text(
-            modifier = Modifier.padding(top = 16.dp),
-            text = stringResource(R.string.dashboard_empty_status),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+        Column(
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer,
+            ) {
+                Text(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    text = stringResource(R.string.dashboard_empty_status),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+            Text(
+                text = stringResource(R.string.dashboard_empty_message),
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        }
     }
 }
 
@@ -363,33 +390,62 @@ private fun TrackerCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {},
+        shape = MaterialTheme.shapes.extraLarge,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         onClick = onClick,
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(
-                text = aggregate.tracker.title,
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                text = trackerKindLabel(aggregate.tracker.kind),
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    modifier = Modifier.weight(1f),
+                    text = aggregate.tracker.title,
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        text = trackerKindLabel(aggregate.tracker.kind),
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+
             Text(
                 text = elapsedSummary(elapsed),
-                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.headlineMedium,
             )
+
             aggregate.goal?.let { goal ->
-                Text(
-                    text = stringResource(
-                        R.string.goal_summary,
-                        goal.targetAmount,
-                        displayFormatLabel(goal.targetUnit),
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
+                Surface(
+                    shape = MaterialTheme.shapes.small,
+                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                ) {
+                    Text(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        text = stringResource(
+                            R.string.goal_summary,
+                            goal.targetAmount,
+                            displayFormatLabel(goal.targetUnit),
+                        ),
+                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                }
             }
         }
     }
@@ -422,14 +478,16 @@ private fun TrackerDetailsScreen(
             .format(Instant.ofEpochMilli(currentPeriod.startEpochMs).atZone(zone))
     }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -444,64 +502,87 @@ private fun TrackerDetailsScreen(
                 }
             }
 
-            Text(
-                modifier = Modifier.semantics { heading() },
-                text = aggregate.tracker.title,
-                style = MaterialTheme.typography.headlineMedium,
-            )
-            Text(
-                text = trackerKindLabel(aggregate.tracker.kind),
-                style = MaterialTheme.typography.labelLarge,
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = stringResource(R.string.elapsed_label),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                SelectionContainer {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge,
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            text = trackerKindLabel(aggregate.tracker.kind),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                    }
                     Text(
-                        text = elapsedSummary(elapsed),
-                        style = MaterialTheme.typography.displaySmall,
+                        modifier = Modifier.semantics { heading() },
+                        text = aggregate.tracker.title,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.elapsed_label),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    SelectionContainer {
+                        Text(
+                            text = elapsedSummary(elapsed),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.displaySmall,
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.started_on_label),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                    Text(
+                        text = startedOn,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = currentPeriod.startZoneId,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
 
-            FormatSelector(
-                title = stringResource(R.string.display_format_label),
-                selected = aggregate.tracker.defaultDisplayFormat,
-                enabled = true,
-                onSelect = onDisplayFormatChange,
-            )
+            SectionCard {
+                FormatSelector(
+                    title = stringResource(R.string.display_format_label),
+                    selected = aggregate.tracker.defaultDisplayFormat,
+                    enabled = true,
+                    onSelect = onDisplayFormatChange,
+                )
 
-            if (updateFailed) {
-                Text(
-                    modifier = Modifier.semantics {
-                        liveRegion = LiveRegionMode.Assertive
-                    },
-                    text = stringResource(R.string.display_format_update_failed),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = stringResource(R.string.started_on_label),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = startedOn,
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = currentPeriod.startZoneId,
-                    style = MaterialTheme.typography.bodySmall,
-                )
+                if (updateFailed) {
+                    Text(
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Assertive
+                        },
+                        text = stringResource(R.string.display_format_update_failed),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
             }
 
             aggregate.goal?.let { goal ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SectionCard {
                     Text(
                         text = stringResource(R.string.goal_label),
                         style = MaterialTheme.typography.titleMedium,
@@ -512,30 +593,44 @@ private fun TrackerDetailsScreen(
                             goal.targetAmount,
                             displayFormatLabel(goal.targetUnit),
                         ),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.goal_progress_deferred),
-                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.headlineSmall,
                     )
                 }
             }
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SectionCard {
                 Text(
                     text = stringResource(R.string.note_label),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
                     text = aggregate.tracker.note ?: stringResource(R.string.no_note),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+        }
+    }
+}
 
-            Text(
-                text = stringResource(R.string.details_development_boundary),
-                style = MaterialTheme.typography.bodySmall,
-            )
+@Composable
+private fun SectionCard(
+    content: @Composable () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            content()
         }
     }
 }
@@ -619,37 +714,71 @@ private fun TrackerTypeChooser(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.choose_tracker_type)) },
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = {
+            Text(
+                text = stringResource(R.string.choose_tracker_type),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+        },
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                TextButton(
-                    modifier = Modifier.fillMaxWidth(),
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.EVENT) },
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                    ),
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(stringResource(R.string.tracker_kind_event))
+                        Text(
+                            text = stringResource(R.string.tracker_kind_event),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         Text(
                             text = stringResource(R.string.event_description),
-                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
 
-                TextButton(
-                    modifier = Modifier.fillMaxWidth(),
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics(mergeDescendants = true) {},
                     onClick = { onChoose(TrackerKind.STREAK) },
+                    shape = MaterialTheme.shapes.large,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.32f),
+                    ),
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Text(stringResource(R.string.tracker_kind_streak))
+                        Text(
+                            text = stringResource(R.string.tracker_kind_streak),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         Text(
                             text = stringResource(R.string.streak_description),
-                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.bodyMedium,
                         )
                     }
                 }
@@ -693,14 +822,16 @@ private fun CreateTrackerScreen(
     val displayFormat = DisplayFormat.valueOf(displayFormatName)
     val goalUnit = DisplayFormat.valueOf(goalUnitName)
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
                 modifier = Modifier.semantics { heading() },
@@ -711,107 +842,111 @@ private fun CreateTrackerScreen(
                 style = MaterialTheme.typography.headlineMedium,
             )
 
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("title-field"),
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(R.string.title_label)) },
-                singleLine = true,
-                enabled = !isSaving,
-            )
-
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(stringResource(R.string.note_label)) },
-                minLines = 3,
-                enabled = !isSaving,
-            )
-
-            StartEditorFields(
-                startDateTime = startDateTime,
-                onStartDateTimeChange = {
-                    startDateTime = it
-                    startInputErrors = emptyList()
-                },
-                startZoneId = startZoneId,
-                onStartZoneIdChange = {
-                    startZoneId = it
-                    startInputErrors = emptyList()
-                },
-                startInputErrors = startInputErrors,
-                enabled = !isSaving,
-                onUseNow = {
-                    val currentZoneId = ZoneId.systemDefault().id
-                    startZoneId = currentZoneId
-                    startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
-                    startInputErrors = emptyList()
-                },
-            )
-
-            Text(
-                text = stringResource(R.string.icon_accent_deferred),
-                style = MaterialTheme.typography.bodySmall,
-            )
-
-            FormatSelector(
-                title = stringResource(R.string.display_format_label),
-                selected = displayFormat,
-                enabled = !isSaving,
-                onSelect = { displayFormatName = it.name },
-            )
-
-            if (kind == TrackerKind.STREAK) {
-                Row(
+            SectionCard {
+                OutlinedTextField(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .toggleable(
-                            value = goalEnabled,
+                        .testTag("title-field"),
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text(stringResource(R.string.title_label)) },
+                    singleLine = true,
+                    enabled = !isSaving,
+                )
+
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(stringResource(R.string.note_label)) },
+                    minLines = 3,
+                    enabled = !isSaving,
+                )
+            }
+
+            SectionCard {
+                StartEditorFields(
+                    startDateTime = startDateTime,
+                    onStartDateTimeChange = {
+                        startDateTime = it
+                        startInputErrors = emptyList()
+                    },
+                    startZoneId = startZoneId,
+                    onStartZoneIdChange = {
+                        startZoneId = it
+                        startInputErrors = emptyList()
+                    },
+                    startInputErrors = startInputErrors,
+                    enabled = !isSaving,
+                    onUseNow = {
+                        val currentZoneId = ZoneId.systemDefault().id
+                        startZoneId = currentZoneId
+                        startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
+                        startInputErrors = emptyList()
+                    },
+                )
+            }
+
+            SectionCard {
+                FormatSelector(
+                    title = stringResource(R.string.display_format_label),
+                    selected = displayFormat,
+                    enabled = !isSaving,
+                    onSelect = { displayFormatName = it.name },
+                )
+            }
+
+            if (kind == TrackerKind.STREAK) {
+                SectionCard {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = goalEnabled,
+                                enabled = !isSaving,
+                                role = Role.Switch,
+                                onValueChange = { goalEnabled = it },
+                            )
+                            .semantics(mergeDescendants = true) {},
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(R.string.goal_label),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = stringResource(R.string.goal_optional_description),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        Switch(
+                            modifier = Modifier.clearAndSetSemantics {},
+                            checked = goalEnabled,
+                            onCheckedChange = null,
                             enabled = !isSaving,
-                            role = Role.Switch,
-                            onValueChange = { goalEnabled = it },
-                        )
-                        .semantics(mergeDescendants = true) {},
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = stringResource(R.string.goal_label),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = stringResource(R.string.goal_optional_description),
-                            style = MaterialTheme.typography.bodySmall,
                         )
                     }
-                    Switch(
-                        modifier = Modifier.clearAndSetSemantics {},
-                        checked = goalEnabled,
-                        onCheckedChange = null,
-                        enabled = !isSaving,
-                    )
-                }
 
-                if (goalEnabled) {
-                    OutlinedTextField(
-                        modifier = Modifier.fillMaxWidth(),
-                        value = goalAmount,
-                        onValueChange = { goalAmount = it.filter(Char::isDigit) },
-                        label = { Text(stringResource(R.string.goal_amount_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                        enabled = !isSaving,
-                    )
-                    FormatSelector(
-                        title = stringResource(R.string.goal_unit_label),
-                        selected = goalUnit,
-                        enabled = !isSaving,
-                        onSelect = { goalUnitName = it.name },
-                    )
+                    if (goalEnabled) {
+                        OutlinedTextField(
+                            modifier = Modifier.fillMaxWidth(),
+                            value = goalAmount,
+                            onValueChange = { goalAmount = it.filter(Char::isDigit) },
+                            label = { Text(stringResource(R.string.goal_amount_label)) },
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            enabled = !isSaving,
+                        )
+                        FormatSelector(
+                            title = stringResource(R.string.goal_unit_label),
+                            selected = goalUnit,
+                            enabled = !isSaving,
+                            onSelect = { goalUnitName = it.name },
+                        )
+                    }
                 }
             }
 
@@ -890,14 +1025,16 @@ private fun EditTrackerScreen(
     }
     val displayFormat = DisplayFormat.valueOf(displayFormatName)
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
                 modifier = Modifier.semantics { heading() },
@@ -905,68 +1042,70 @@ private fun EditTrackerScreen(
                 style = MaterialTheme.typography.headlineMedium,
             )
 
-            OutlinedTextField(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("title-field"),
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(R.string.title_label)) },
-                singleLine = true,
-                enabled = !isSaving,
-            )
+            SectionCard {
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("title-field"),
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text(stringResource(R.string.title_label)) },
+                    singleLine = true,
+                    enabled = !isSaving,
+                )
 
-            OutlinedTextField(
-                modifier = Modifier.fillMaxWidth(),
-                value = note,
-                onValueChange = { note = it },
-                label = { Text(stringResource(R.string.note_label)) },
-                minLines = 3,
-                enabled = !isSaving,
-            )
-
-            StartEditorFields(
-                startDateTime = startDateTime,
-                onStartDateTimeChange = {
-                    startDateTime = it
-                    startInputErrors = emptyList()
-                },
-                startZoneId = startZoneId,
-                onStartZoneIdChange = {
-                    startZoneId = it
-                    startInputErrors = emptyList()
-                },
-                startInputErrors = startInputErrors,
-                enabled = !isSaving,
-                onUseNow = {
-                    val currentZoneId = ZoneId.systemDefault().id
-                    startZoneId = currentZoneId
-                    startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
-                    startInputErrors = emptyList()
-                },
-            )
-
-            if (aggregate.periods.any { it.endEpochMs != null }) {
-                Text(
-                    text = stringResource(R.string.edit_history_boundary),
-                    style = MaterialTheme.typography.bodySmall,
+                OutlinedTextField(
+                    modifier = Modifier.fillMaxWidth(),
+                    value = note,
+                    onValueChange = { note = it },
+                    label = { Text(stringResource(R.string.note_label)) },
+                    minLines = 3,
+                    enabled = !isSaving,
                 )
             }
 
-            Text(
-                text = stringResource(R.string.icon_accent_deferred),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            SectionCard {
+                StartEditorFields(
+                    startDateTime = startDateTime,
+                    onStartDateTimeChange = {
+                        startDateTime = it
+                        startInputErrors = emptyList()
+                    },
+                    startZoneId = startZoneId,
+                    onStartZoneIdChange = {
+                        startZoneId = it
+                        startInputErrors = emptyList()
+                    },
+                    startInputErrors = startInputErrors,
+                    enabled = !isSaving,
+                    onUseNow = {
+                        val currentZoneId = ZoneId.systemDefault().id
+                        startZoneId = currentZoneId
+                        startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
+                        startInputErrors = emptyList()
+                    },
+                )
 
-            FormatSelector(
-                title = stringResource(R.string.display_format_label),
-                selected = displayFormat,
-                enabled = !isSaving,
-                onSelect = { displayFormatName = it.name },
-            )
+                if (aggregate.periods.any { it.endEpochMs != null }) {
+                    Text(
+                        text = stringResource(R.string.edit_history_boundary),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+
+            SectionCard {
+                FormatSelector(
+                    title = stringResource(R.string.display_format_label),
+                    selected = displayFormat,
+                    enabled = !isSaving,
+                    onSelect = { displayFormatName = it.name },
+                )
+            }
 
             aggregate.goal?.let { goal ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                SectionCard {
                     Text(
                         text = stringResource(R.string.goal_label),
                         style = MaterialTheme.typography.titleMedium,
@@ -977,11 +1116,8 @@ private fun EditTrackerScreen(
                             goal.targetAmount,
                             displayFormatLabel(goal.targetUnit),
                         ),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.goal_edit_deferred),
-                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.headlineSmall,
                     )
                 }
             }
@@ -1030,53 +1166,47 @@ private fun StartEditorFields(
     enabled: Boolean,
     onUseNow: () -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Text(
+        text = stringResource(R.string.start_label),
+        style = MaterialTheme.typography.titleMedium,
+    )
+    OutlinedTextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("start-date-time-field"),
+        value = startDateTime,
+        onValueChange = onStartDateTimeChange,
+        label = { Text(stringResource(R.string.start_date_time_label)) },
+        supportingText = { Text(TrackerStartInput.FORMAT_HINT) },
+        singleLine = true,
+        enabled = enabled,
+    )
+    OutlinedTextField(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("start-zone-field"),
+        value = startZoneId,
+        onValueChange = onStartZoneIdChange,
+        label = { Text(stringResource(R.string.start_zone_label)) },
+        supportingText = { Text(stringResource(R.string.start_zone_hint)) },
+        singleLine = true,
+        enabled = enabled,
+    )
+    TextButton(
+        onClick = onUseNow,
+        enabled = enabled,
+    ) {
+        Text(stringResource(R.string.use_now))
+    }
+    if (startInputErrors.isNotEmpty()) {
         Text(
-            text = stringResource(R.string.start_label),
-            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier.semantics {
+                liveRegion = LiveRegionMode.Assertive
+            },
+            text = startInputErrors.joinToString(separator = "\n"),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
         )
-        OutlinedTextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("start-date-time-field"),
-            value = startDateTime,
-            onValueChange = onStartDateTimeChange,
-            label = { Text(stringResource(R.string.start_date_time_label)) },
-            supportingText = { Text(TrackerStartInput.FORMAT_HINT) },
-            singleLine = true,
-            enabled = enabled,
-        )
-        OutlinedTextField(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag("start-zone-field"),
-            value = startZoneId,
-            onValueChange = onStartZoneIdChange,
-            label = { Text(stringResource(R.string.start_zone_label)) },
-            supportingText = { Text(stringResource(R.string.start_zone_hint)) },
-            singleLine = true,
-            enabled = enabled,
-        )
-        TextButton(
-            onClick = onUseNow,
-            enabled = enabled,
-        ) {
-            Text(stringResource(R.string.use_now))
-        }
-        Text(
-            text = stringResource(R.string.dst_overlap_policy),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (startInputErrors.isNotEmpty()) {
-            Text(
-                modifier = Modifier.semantics {
-                    liveRegion = LiveRegionMode.Assertive
-                },
-                text = startInputErrors.joinToString(separator = "\n"),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-            )
-        }
     }
 }
 
@@ -1147,35 +1277,58 @@ private fun FormatSelector(
     onSelect: (DisplayFormat) -> Unit,
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleMedium,
         )
-        DisplayFormat.entries.forEach { format ->
+
+        DisplayFormat.entries.chunked(2).forEach { formats ->
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = selected == format,
-                        enabled = enabled,
-                        role = Role.RadioButton,
-                        onClick = { onSelect(format) },
-                    )
-                    .semantics(mergeDescendants = true) {},
-                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                RadioButton(
-                    modifier = Modifier.clearAndSetSemantics {},
-                    selected = selected == format,
-                    onClick = null,
-                    enabled = enabled,
-                )
-                Text(
-                    text = displayFormatLabel(format),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
+                formats.forEach { format ->
+                    val isSelected = selected == format
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .selectable(
+                                selected = isSelected,
+                                enabled = enabled,
+                                role = Role.RadioButton,
+                                onClick = { onSelect(format) },
+                            )
+                            .semantics(mergeDescendants = true) {},
+                        shape = MaterialTheme.shapes.medium,
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                        contentColor = if (isSelected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        border = BorderStroke(
+                            1.dp,
+                            if (isSelected) {
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+                            } else {
+                                MaterialTheme.colorScheme.outlineVariant
+                            },
+                        ),
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+                            text = displayFormatLabel(format),
+                            textAlign = TextAlign.Center,
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
             }
         }
     }
