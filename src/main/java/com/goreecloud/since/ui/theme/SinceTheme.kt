@@ -23,14 +23,22 @@ private val SinceLightColors = lightColorScheme(
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFFFE6AF),
     onTertiaryContainer = Color(0xFF4C3600),
-    background = Color(0xFFF5F8F7),
+    background = Color(0xFFF4F8F7),
     onBackground = Color(0xFF172021),
     surface = Color(0xFFFBFDFC),
     onSurface = Color(0xFF172021),
     surfaceVariant = Color(0xFFE5ECEA),
     onSurfaceVariant = Color(0xFF465252),
+    surfaceDim = Color(0xFFD7E0DE),
+    surfaceBright = Color(0xFFFBFDFC),
+    surfaceContainerLowest = Color(0xFFFFFFFF),
+    surfaceContainerLow = Color(0xFFF0F5F4),
+    surfaceContainer = Color(0xFFE9F0EF),
+    surfaceContainerHigh = Color(0xFFE2EAE8),
+    surfaceContainerHighest = Color(0xFFD9E3E1),
     outline = Color(0xFF758180),
     outlineVariant = Color(0xFFC5CFCD),
+    surfaceTint = Color(0xFF0F656A),
 )
 
 private val SinceDarkColors = darkColorScheme(
@@ -52,8 +60,16 @@ private val SinceDarkColors = darkColorScheme(
     onSurface = Color(0xFFDDE5E3),
     surfaceVariant = Color(0xFF293334),
     onSurfaceVariant = Color(0xFFC1CBC9),
+    surfaceDim = Color(0xFF0D1415),
+    surfaceBright = Color(0xFF323D3E),
+    surfaceContainerLowest = Color(0xFF0B1112),
+    surfaceContainerLow = Color(0xFF151E1F),
+    surfaceContainer = Color(0xFF1A2425),
+    surfaceContainerHigh = Color(0xFF202B2C),
+    surfaceContainerHighest = Color(0xFF283334),
     outline = Color(0xFF899493),
     outlineVariant = Color(0xFF3E4949),
+    surfaceTint = Color(0xFF91D5D5),
 )
 
 private val SinceShapes = Shapes(
