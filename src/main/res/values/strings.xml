@@ -15,8 +15,12 @@
     <string name="title_label">Title</string>
     <string name="note_label">Note</string>
     <string name="start_label">Start</string>
-    <string name="start_now_value">Now · %1$s</string>
-    <string name="custom_start_development_boundary">Custom past date/time, icon, and accent selection remain in the next M1 editor increment.</string>
+    <string name="start_date_time_label">Local date and time</string>
+    <string name="start_zone_label">Time zone</string>
+    <string name="start_zone_hint">Use an IANA zone such as America/Chicago.</string>
+    <string name="use_now">Use now</string>
+    <string name="dst_overlap_policy">Daylight-saving gaps are rejected. During a fall-back overlap, Since uses the earlier valid offset.</string>
+    <string name="icon_accent_deferred">Icon and accent selection remain deferred until an approved Since-specific GLAZE mapping exists.</string>
     <string name="display_format_label">Display format</string>
     <string name="format_days">Days</string>
     <string name="format_weeks">Weeks</string>
@@ -36,11 +40,16 @@
     <string name="clock_inconsistency">Check device clock</string>
 
     <string name="back">Back</string>
+    <string name="edit_tracker">Edit</string>
+    <string name="edit_tracker_title">Edit %1$s</string>
+    <string name="edit_history_boundary">Only the open current period start can change. Closed streak history remains immutable.</string>
+    <string name="edit_history_conflict">Current streak start cannot be earlier than the end of existing closed history.</string>
+    <string name="goal_edit_deferred">Goal editing remains in the M2 goal increment.</string>
     <string name="started_on_label">Started on</string>
     <string name="no_note">No note</string>
     <string name="display_format_update_failed">Could not update the display format.</string>
     <string name="goal_progress_deferred">Progress and estimated completion remain in the M2 goal increment.</string>
-    <string name="details_development_boundary">Edit, archive, delete, reset/history, goal progress, and sharing remain in later Development increments.</string>
+    <string name="details_development_boundary">Archive, delete, reset/history, goal progress/editor, icon/accent selection, and sharing remain in later Development increments.</string>
 
     <string name="save">Save</string>
     <string name="saving">Saving…</string>

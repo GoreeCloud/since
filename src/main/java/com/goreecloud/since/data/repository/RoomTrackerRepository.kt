@@ -93,6 +93,24 @@ class RoomTrackerRepository(
         trackerId: String,
     ): TrackerAggregate? = dao.readAggregate(trackerId)?.toDomain()
 
+    override suspend fun updateTracker(
+        trackerId: String,
+        draft: ValidatedTrackerDraft,
+    ): TrackerAggregate? {
+        val existing = dao.readAggregate(trackerId)?.toDomain() ?: return null
+        if (existing.tracker.kind != draft.kind) return null
+
+        return dao.updateTrackerAggregate(
+            eventId = trackerId,
+            title = draft.title,
+            note = draft.note,
+            displayFormat = draft.displayFormat.name,
+            startEpochMs = draft.startEpochMs,
+            startZoneId = draft.startZoneId,
+            updatedAtEpochMs = clock.millis(),
+        )?.toDomain()
+    }
+
     override suspend fun updateDisplayFormat(
         trackerId: String,
         displayFormat: DisplayFormat,

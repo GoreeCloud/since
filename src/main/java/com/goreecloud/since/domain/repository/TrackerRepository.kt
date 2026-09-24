@@ -15,6 +15,11 @@ interface TrackerRepository {
 
     suspend fun loadTracker(trackerId: String): TrackerAggregate?
 
+    suspend fun updateTracker(
+        trackerId: String,
+        draft: ValidatedTrackerDraft,
+    ): TrackerAggregate?
+
     suspend fun updateDisplayFormat(
         trackerId: String,
         displayFormat: DisplayFormat,

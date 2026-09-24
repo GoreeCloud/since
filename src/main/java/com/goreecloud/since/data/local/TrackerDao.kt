@@ -47,6 +47,39 @@ abstract class TrackerDao {
     abstract suspend fun openPeriodCount(eventId: String): Int
 
     @Query(
+        "SELECT MAX(end_epoch_ms) FROM event_periods " +
+            "WHERE event_id = :eventId AND end_epoch_ms IS NOT NULL"
+    )
+    protected abstract suspend fun latestClosedPeriodEnd(eventId: String): Long?
+
+    @Query(
+        "UPDATE tracked_events SET " +
+            "title = :title, note = :note, default_display_format = :displayFormat, " +
+            "updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :eventId AND is_archived = 0"
+    )
+    protected abstract suspend fun updateTrackerMetadata(
+        eventId: String,
+        title: String,
+        note: String?,
+        displayFormat: String,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query(
+        "UPDATE event_periods SET " +
+            "start_epoch_ms = :startEpochMs, start_zone_id = :startZoneId, " +
+            "updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE event_id = :eventId AND end_epoch_ms IS NULL"
+    )
+    protected abstract suspend fun updateCurrentPeriodStart(
+        eventId: String,
+        startEpochMs: Long,
+        startZoneId: String,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query(
         "UPDATE tracked_events " +
             "SET default_display_format = :displayFormat, updated_at_epoch_ms = :updatedAtEpochMs " +
             "WHERE id = :eventId AND is_archived = 0"
@@ -98,6 +131,47 @@ abstract class TrackerDao {
             periods = listOf(initialPeriod),
             goal = goal,
         )
+    }
+
+    @Transaction
+    open suspend fun updateTrackerAggregate(
+        eventId: String,
+        title: String,
+        note: String?,
+        displayFormat: String,
+        startEpochMs: Long,
+        startZoneId: String,
+        updatedAtEpochMs: Long,
+    ): PersistedTrackerAggregate? {
+        val tracker = readTrackedEvent(eventId) ?: return null
+        if (tracker.isArchived) return null
+        if (openPeriodCount(eventId) != 1) return null
+
+        val latestClosedEnd = latestClosedPeriodEnd(eventId)
+        if (latestClosedEnd != null && startEpochMs < latestClosedEnd) {
+            return null
+        }
+
+        check(
+            updateTrackerMetadata(
+                eventId = eventId,
+                title = title,
+                note = note,
+                displayFormat = displayFormat,
+                updatedAtEpochMs = updatedAtEpochMs,
+            ) == 1
+        ) { "tracker edit did not update exactly one tracker row" }
+
+        check(
+            updateCurrentPeriodStart(
+                eventId = eventId,
+                startEpochMs = startEpochMs,
+                startZoneId = startZoneId,
+                updatedAtEpochMs = updatedAtEpochMs,
+            ) == 1
+        ) { "tracker edit did not update exactly one open current period" }
+
+        return readAggregate(eventId)
     }
 
     @Transaction

@@ -247,6 +247,112 @@ class SinceDatabaseRuntimeTest {
 
 
     @Test
+    fun trackerEditUpdatesOnlyMetadataAndOpenCurrentPeriod() = runBlocking {
+        val now = Instant.parse("2026-09-23T18:00:00Z")
+        val clock = Clock.fixed(now, ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+        val tracker = trackerEntity(id = "edit-streak", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = tracker,
+            initialPeriod = periodEntity(
+                id = "edit-current",
+                eventId = tracker.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = null,
+        )
+        dao.insertPeriod(
+            periodEntity(
+                id = "edit-history",
+                eventId = tracker.id,
+                sequence = 1,
+                start = 2_000L,
+                end = 3_000L,
+            )
+        )
+
+        val validation = TrackerDraftValidator(clock).validate(
+            TrackerDraft(
+                title = "  Edited streak  ",
+                note = "  Current period only.  ",
+                kind = TrackerKind.STREAK,
+                startEpochMs = 4_000L,
+                startZoneId = "America/Chicago",
+                displayFormat = DisplayFormat.WEEKS,
+            )
+        )
+        val edited = repository.updateTracker(
+            trackerId = tracker.id,
+            draft = (validation as TrackerDraftValidation.Valid).draft,
+        )
+
+        assertNotNull(edited)
+        assertEquals("Edited streak", edited!!.tracker.title)
+        assertEquals("Current period only.", edited.tracker.note)
+        assertEquals(DisplayFormat.WEEKS, edited.tracker.defaultDisplayFormat)
+        assertEquals(4_000L, edited.periods.single { it.endEpochMs == null }.startEpochMs)
+        assertEquals(
+            "America/Chicago",
+            edited.periods.single { it.endEpochMs == null }.startZoneId,
+        )
+        val history = edited.periods.single { it.endEpochMs != null }
+        assertEquals(2_000L, history.startEpochMs)
+        assertEquals(3_000L, history.endEpochMs)
+    }
+
+    @Test
+    fun trackerEditRejectsCurrentStartBeforeLatestClosedHistory() = runBlocking {
+        val now = Instant.parse("2026-09-23T18:00:00Z")
+        val clock = Clock.fixed(now, ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+        val tracker = trackerEntity(id = "edit-conflict", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = tracker,
+            initialPeriod = periodEntity(
+                id = "edit-conflict-current",
+                eventId = tracker.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = null,
+        )
+        dao.insertPeriod(
+            periodEntity(
+                id = "edit-conflict-history",
+                eventId = tracker.id,
+                sequence = 1,
+                start = 2_000L,
+                end = 3_000L,
+            )
+        )
+
+        val validation = TrackerDraftValidator(clock).validate(
+            TrackerDraft(
+                title = "Rejected edit",
+                note = null,
+                kind = TrackerKind.STREAK,
+                startEpochMs = 2_500L,
+                startZoneId = "UTC",
+                displayFormat = DisplayFormat.MONTHS,
+            )
+        )
+        val edited = repository.updateTracker(
+            trackerId = tracker.id,
+            draft = (validation as TrackerDraftValidation.Valid).draft,
+        )
+
+        assertEquals(null, edited)
+        val unchanged = repository.loadTracker(tracker.id)!!
+        assertEquals(tracker.title, unchanged.tracker.title)
+        assertEquals(DisplayFormat.DAYS, unchanged.tracker.defaultDisplayFormat)
+        assertEquals(
+            1_000L,
+            unchanged.periods.single { it.endEpochMs == null }.startEpochMs,
+        )
+    }
+
+    @Test
     fun displayFormatUpdatePersistsAndReemitsAggregate() = runBlocking {
         val now = Instant.parse("2026-09-23T18:00:00Z")
         val clock = Clock.fixed(now, ZoneId.of("UTC"))

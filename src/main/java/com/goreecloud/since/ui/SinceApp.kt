@@ -45,6 +45,8 @@ import com.goreecloud.since.domain.model.TrackerKind
 import com.goreecloud.since.domain.repository.TrackerRepository
 import com.goreecloud.since.domain.time.ElapsedResult
 import com.goreecloud.since.domain.time.TimeEngine
+import com.goreecloud.since.domain.time.TrackerStartInput
+import com.goreecloud.since.domain.time.TrackerStartResolution
 import com.goreecloud.since.domain.validation.TrackerDraft
 import com.goreecloud.since.domain.validation.TrackerDraftValidation
 import com.goreecloud.since.domain.validation.TrackerDraftValidator
@@ -71,10 +73,12 @@ fun SinceApp(
     var showTypeChooser by rememberSaveable { mutableStateOf(false) }
     var editorKindName by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var editingTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var validationErrors by remember { mutableStateOf(emptyList<String>()) }
     var saveFailed by rememberSaveable { mutableStateOf(false) }
     var detailUpdateFailed by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
+    val historyConflictMessage = stringResource(R.string.edit_history_conflict)
 
     val editorKind = editorKindName?.let { runCatching { TrackerKind.valueOf(it) }.getOrNull() }
     if (editorKind != null) {
@@ -122,6 +126,69 @@ fun SinceApp(
     val selectedAggregate = selectedTrackerId?.let { trackerId ->
         aggregates.firstOrNull { it.tracker.id == trackerId }
     }
+    val editingAggregate = editingTrackerId?.let { trackerId ->
+        aggregates.firstOrNull { it.tracker.id == trackerId }
+    }
+
+    if (editingAggregate != null) {
+        EditTrackerScreen(
+            aggregate = editingAggregate,
+            clock = clock,
+            validationErrors = validationErrors,
+            saveFailed = saveFailed,
+            isSaving = isSaving,
+            onCancel = {
+                validationErrors = emptyList()
+                saveFailed = false
+                editingTrackerId = null
+            },
+            onSave = { draft ->
+                when (val validation = validator.validate(draft)) {
+                    is TrackerDraftValidation.Invalid -> {
+                        validationErrors = validation.errors
+                        saveFailed = false
+                    }
+
+                    is TrackerDraftValidation.Valid -> {
+                        val latestClosedEnd = editingAggregate.periods
+                            .mapNotNull { it.endEpochMs }
+                            .maxOrNull()
+                        if (
+                            latestClosedEnd != null &&
+                            validation.draft.startEpochMs < latestClosedEnd
+                        ) {
+                            validationErrors = listOf(historyConflictMessage)
+                            saveFailed = false
+                        } else {
+                            validationErrors = emptyList()
+                            saveFailed = false
+                            isSaving = true
+                            scope.launch {
+                                runCatching {
+                                    repository.updateTracker(
+                                        trackerId = editingAggregate.tracker.id,
+                                        draft = validation.draft,
+                                    )
+                                }.onSuccess { updated ->
+                                    if (updated == null) {
+                                        saveFailed = true
+                                    } else {
+                                        detailUpdateFailed = false
+                                        editingTrackerId = null
+                                    }
+                                }.onFailure {
+                                    saveFailed = true
+                                }
+                                isSaving = false
+                            }
+                        }
+                    }
+                }
+            },
+        )
+        return
+    }
+
     if (selectedAggregate != null) {
         TrackerDetailsScreen(
             aggregate = selectedAggregate,
@@ -129,7 +196,13 @@ fun SinceApp(
             updateFailed = detailUpdateFailed,
             onBack = {
                 selectedTrackerId = null
+                editingTrackerId = null
                 detailUpdateFailed = false
+            },
+            onEdit = {
+                validationErrors = emptyList()
+                saveFailed = false
+                editingTrackerId = selectedAggregate.tracker.id
             },
             onDisplayFormatChange = { format ->
                 if (format != selectedAggregate.tracker.defaultDisplayFormat) {
@@ -312,6 +385,7 @@ private fun TrackerDetailsScreen(
     clock: Clock,
     updateFailed: Boolean,
     onBack: () -> Unit,
+    onEdit: () -> Unit,
     onDisplayFormatChange: (DisplayFormat) -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
@@ -341,8 +415,17 @@ private fun TrackerDetailsScreen(
                 .padding(horizontal = 20.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
-            TextButton(onClick = onBack) {
-                Text(stringResource(R.string.back))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onBack) {
+                    Text(stringResource(R.string.back))
+                }
+                TextButton(onClick = onEdit) {
+                    Text(stringResource(R.string.edit_tracker))
+                }
             }
 
             Text(
@@ -570,8 +653,14 @@ private fun CreateTrackerScreen(
     onCancel: () -> Unit,
     onSave: (TrackerDraft) -> Unit,
 ) {
+    val defaultZoneId = ZoneId.systemDefault().id
     var title by rememberSaveable(kind.name) { mutableStateOf("") }
     var note by rememberSaveable(kind.name) { mutableStateOf("") }
+    var startDateTime by rememberSaveable(kind.name) {
+        mutableStateOf(TrackerStartInput.format(clock.millis(), defaultZoneId))
+    }
+    var startZoneId by rememberSaveable(kind.name) { mutableStateOf(defaultZoneId) }
+    var startInputErrors by remember { mutableStateOf(emptyList<String>()) }
     var displayFormatName by rememberSaveable(kind.name) {
         mutableStateOf(DisplayFormat.DAYS.name)
     }
@@ -583,7 +672,6 @@ private fun CreateTrackerScreen(
 
     val displayFormat = DisplayFormat.valueOf(displayFormatName)
     val goalUnit = DisplayFormat.valueOf(goalUnitName)
-    val zoneId = ZoneId.systemDefault().id
 
     Scaffold { innerPadding ->
         Column(
@@ -597,10 +685,7 @@ private fun CreateTrackerScreen(
             Text(
                 text = stringResource(
                     R.string.create_tracker_title,
-                    when (kind) {
-                        TrackerKind.EVENT -> stringResource(R.string.tracker_kind_event)
-                        TrackerKind.STREAK -> stringResource(R.string.tracker_kind_streak)
-                    },
+                    trackerKindLabel(kind),
                 ),
                 style = MaterialTheme.typography.headlineMedium,
             )
@@ -623,22 +708,31 @@ private fun CreateTrackerScreen(
                 enabled = !isSaving,
             )
 
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.start_label),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                Text(
-                    text = stringResource(R.string.start_now_value, zoneId),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = stringResource(R.string.custom_start_development_boundary),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
+            StartEditorFields(
+                startDateTime = startDateTime,
+                onStartDateTimeChange = {
+                    startDateTime = it
+                    startInputErrors = emptyList()
+                },
+                startZoneId = startZoneId,
+                onStartZoneIdChange = {
+                    startZoneId = it
+                    startInputErrors = emptyList()
+                },
+                startInputErrors = startInputErrors,
+                enabled = !isSaving,
+                onUseNow = {
+                    val currentZoneId = ZoneId.systemDefault().id
+                    startZoneId = currentZoneId
+                    startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
+                    startInputErrors = emptyList()
+                },
+            )
+
+            Text(
+                text = stringResource(R.string.icon_accent_deferred),
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             FormatSelector(
                 title = stringResource(R.string.display_format_label),
@@ -653,9 +747,7 @@ private fun CreateTrackerScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                    ) {
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = stringResource(R.string.goal_label),
                             style = MaterialTheme.typography.titleMedium,
@@ -691,66 +783,310 @@ private fun CreateTrackerScreen(
                 }
             }
 
-            if (validationErrors.isNotEmpty()) {
-                Text(
-                    text = validationErrors.joinToString(separator = "\n"),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+            EditorStatus(
+                validationErrors = validationErrors,
+                saveFailed = saveFailed,
+            )
 
-            if (saveFailed) {
-                Text(
-                    text = stringResource(R.string.save_failed),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-            ) {
-                TextButton(
-                    onClick = onCancel,
-                    enabled = !isSaving,
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
-                Button(
-                    onClick = {
-                        onSave(
-                            TrackerDraft(
-                                title = title,
-                                note = note,
-                                kind = kind,
-                                startEpochMs = clock.millis(),
-                                startZoneId = zoneId,
-                                displayFormat = displayFormat,
-                                goalAmount = if (kind == TrackerKind.STREAK && goalEnabled) {
-                                    goalAmount.toIntOrNull() ?: 0
-                                } else {
-                                    null
-                                },
-                                goalUnit = if (kind == TrackerKind.STREAK && goalEnabled) {
-                                    goalUnit
-                                } else {
-                                    null
-                                },
-                            )
-                        )
-                    },
-                    enabled = !isSaving,
-                ) {
-                    Text(
-                        if (isSaving) {
-                            stringResource(R.string.saving)
-                        } else {
-                            stringResource(R.string.save)
+            EditorActions(
+                isSaving = isSaving,
+                onCancel = onCancel,
+                onSave = {
+                    when (val start = TrackerStartInput.resolve(startDateTime, startZoneId)) {
+                        is TrackerStartResolution.Invalid -> {
+                            startInputErrors = start.errors
                         }
+
+                        is TrackerStartResolution.Valid -> {
+                            startInputErrors = emptyList()
+                            onSave(
+                                TrackerDraft(
+                                    title = title,
+                                    note = note,
+                                    kind = kind,
+                                    startEpochMs = start.start.epochMs,
+                                    startZoneId = start.start.zoneId,
+                                    displayFormat = displayFormat,
+                                    goalAmount = if (kind == TrackerKind.STREAK && goalEnabled) {
+                                        goalAmount.toIntOrNull() ?: 0
+                                    } else {
+                                        null
+                                    },
+                                    goalUnit = if (kind == TrackerKind.STREAK && goalEnabled) {
+                                        goalUnit
+                                    } else {
+                                        null
+                                    },
+                                )
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditTrackerScreen(
+    aggregate: TrackerAggregate,
+    clock: Clock,
+    validationErrors: List<String>,
+    saveFailed: Boolean,
+    isSaving: Boolean,
+    onCancel: () -> Unit,
+    onSave: (TrackerDraft) -> Unit,
+) {
+    val tracker = aggregate.tracker
+    val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
+    var title by rememberSaveable(tracker.id) { mutableStateOf(tracker.title) }
+    var note by rememberSaveable(tracker.id) { mutableStateOf(tracker.note.orEmpty()) }
+    var startDateTime by rememberSaveable(tracker.id) {
+        mutableStateOf(
+            TrackerStartInput.format(
+                epochMs = currentPeriod.startEpochMs,
+                zoneId = currentPeriod.startZoneId,
+            )
+        )
+    }
+    var startZoneId by rememberSaveable(tracker.id) {
+        mutableStateOf(currentPeriod.startZoneId)
+    }
+    var startInputErrors by remember { mutableStateOf(emptyList<String>()) }
+    var displayFormatName by rememberSaveable(tracker.id) {
+        mutableStateOf(tracker.defaultDisplayFormat.name)
+    }
+    val displayFormat = DisplayFormat.valueOf(displayFormatName)
+
+    Scaffold { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.edit_tracker_title, trackerKindLabel(tracker.kind)),
+                style = MaterialTheme.typography.headlineMedium,
+            )
+
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = title,
+                onValueChange = { title = it },
+                label = { Text(stringResource(R.string.title_label)) },
+                singleLine = true,
+                enabled = !isSaving,
+            )
+
+            OutlinedTextField(
+                modifier = Modifier.fillMaxWidth(),
+                value = note,
+                onValueChange = { note = it },
+                label = { Text(stringResource(R.string.note_label)) },
+                minLines = 3,
+                enabled = !isSaving,
+            )
+
+            StartEditorFields(
+                startDateTime = startDateTime,
+                onStartDateTimeChange = {
+                    startDateTime = it
+                    startInputErrors = emptyList()
+                },
+                startZoneId = startZoneId,
+                onStartZoneIdChange = {
+                    startZoneId = it
+                    startInputErrors = emptyList()
+                },
+                startInputErrors = startInputErrors,
+                enabled = !isSaving,
+                onUseNow = {
+                    val currentZoneId = ZoneId.systemDefault().id
+                    startZoneId = currentZoneId
+                    startDateTime = TrackerStartInput.format(clock.millis(), currentZoneId)
+                    startInputErrors = emptyList()
+                },
+            )
+
+            if (aggregate.periods.any { it.endEpochMs != null }) {
+                Text(
+                    text = stringResource(R.string.edit_history_boundary),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+
+            Text(
+                text = stringResource(R.string.icon_accent_deferred),
+                style = MaterialTheme.typography.bodySmall,
+            )
+
+            FormatSelector(
+                title = stringResource(R.string.display_format_label),
+                selected = displayFormat,
+                enabled = !isSaving,
+                onSelect = { displayFormatName = it.name },
+            )
+
+            aggregate.goal?.let { goal ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.goal_label),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(
+                            R.string.goal_summary,
+                            goal.targetAmount,
+                            displayFormatLabel(goal.targetUnit),
+                        ),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.goal_edit_deferred),
+                        style = MaterialTheme.typography.bodySmall,
                     )
                 }
             }
+
+            EditorStatus(
+                validationErrors = validationErrors,
+                saveFailed = saveFailed,
+            )
+
+            EditorActions(
+                isSaving = isSaving,
+                onCancel = onCancel,
+                onSave = {
+                    when (val start = TrackerStartInput.resolve(startDateTime, startZoneId)) {
+                        is TrackerStartResolution.Invalid -> {
+                            startInputErrors = start.errors
+                        }
+
+                        is TrackerStartResolution.Valid -> {
+                            startInputErrors = emptyList()
+                            onSave(
+                                TrackerDraft(
+                                    title = title,
+                                    note = note,
+                                    kind = tracker.kind,
+                                    startEpochMs = start.start.epochMs,
+                                    startZoneId = start.start.zoneId,
+                                    displayFormat = displayFormat,
+                                )
+                            )
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+private fun StartEditorFields(
+    startDateTime: String,
+    onStartDateTimeChange: (String) -> Unit,
+    startZoneId: String,
+    onStartZoneIdChange: (String) -> Unit,
+    startInputErrors: List<String>,
+    enabled: Boolean,
+    onUseNow: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.start_label),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = startDateTime,
+            onValueChange = onStartDateTimeChange,
+            label = { Text(stringResource(R.string.start_date_time_label)) },
+            supportingText = { Text(TrackerStartInput.FORMAT_HINT) },
+            singleLine = true,
+            enabled = enabled,
+        )
+        OutlinedTextField(
+            modifier = Modifier.fillMaxWidth(),
+            value = startZoneId,
+            onValueChange = onStartZoneIdChange,
+            label = { Text(stringResource(R.string.start_zone_label)) },
+            supportingText = { Text(stringResource(R.string.start_zone_hint)) },
+            singleLine = true,
+            enabled = enabled,
+        )
+        TextButton(
+            onClick = onUseNow,
+            enabled = enabled,
+        ) {
+            Text(stringResource(R.string.use_now))
+        }
+        Text(
+            text = stringResource(R.string.dst_overlap_policy),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (startInputErrors.isNotEmpty()) {
+            Text(
+                text = startInputErrors.joinToString(separator = "\n"),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+    }
+}
+
+@Composable
+private fun EditorStatus(
+    validationErrors: List<String>,
+    saveFailed: Boolean,
+) {
+    if (validationErrors.isNotEmpty()) {
+        Text(
+            text = validationErrors.joinToString(separator = "\n"),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+
+    if (saveFailed) {
+        Text(
+            text = stringResource(R.string.save_failed),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
+}
+
+@Composable
+private fun EditorActions(
+    isSaving: Boolean,
+    onCancel: () -> Unit,
+    onSave: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+    ) {
+        TextButton(
+            onClick = onCancel,
+            enabled = !isSaving,
+        ) {
+            Text(stringResource(R.string.cancel))
+        }
+        Button(
+            onClick = onSave,
+            enabled = !isSaving,
+        ) {
+            Text(
+                if (isSaving) {
+                    stringResource(R.string.saving)
+                } else {
+                    stringResource(R.string.save)
+                }
+            )
         }
     }
 }
