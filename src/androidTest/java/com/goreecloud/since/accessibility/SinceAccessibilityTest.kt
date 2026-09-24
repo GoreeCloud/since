@@ -1,6 +1,9 @@
 package com.goreecloud.since.accessibility
 
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,6 +17,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import com.goreecloud.since.domain.model.DisplayFormat
 import com.goreecloud.since.domain.model.Goal
 import com.goreecloud.since.domain.model.Tracker
@@ -146,6 +151,59 @@ class SinceAccessibilityTest {
             ZoneId.of("America/Chicago").id,
             repository.current.single().periods.single().startZoneId,
         )
+    }
+
+    @Test
+    fun largeFontEditorKeepsPrimaryFieldsAndSaveReachable() {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalDensity provides Density(
+                    density = 1f,
+                    fontScale = 2f,
+                )
+            ) {
+                MaterialTheme {
+                    SinceApp(
+                        repository = FakeTrackerRepository(emptyList()),
+                        clock = clock,
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Add tracker").performClick()
+        composeRule.onNodeWithText("Permanent Event").performClick()
+
+        composeRule.onNodeWithTag("title-field").assertIsDisplayed()
+        composeRule.onNodeWithTag("start-date-time-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun forcedRtlEditorKeepsPrimaryActionsReachable() {
+        composeRule.setContent {
+            CompositionLocalProvider(
+                LocalLayoutDirection provides LayoutDirection.Rtl,
+            ) {
+                MaterialTheme {
+                    SinceApp(
+                        repository = FakeTrackerRepository(emptyList()),
+                        clock = clock,
+                    )
+                }
+            }
+        }
+
+        composeRule.onNodeWithText("Add tracker").performClick()
+        composeRule.onNodeWithText("Permanent Event").performClick()
+
+        composeRule
+            .onNodeWithText("Create Permanent Event")
+            .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading))
+        composeRule.onNodeWithTag("title-field").assertIsDisplayed()
+        composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
     }
 
     private fun sampleAggregate(): TrackerAggregate {
