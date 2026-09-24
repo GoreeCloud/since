@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Since</string>
+    <string name="dashboard_title">Since</string>
+    <string name="dashboard_empty_message">Track time since an event or start a streak.</string>
+    <string name="dashboard_empty_status">No trackers yet</string>
+    <string name="add_tracker">Add tracker</string>
+    <string name="development_boundary_title">Tracker creation is next</string>
+    <string name="development_boundary_message">This Development foundation verifies the app shell and time/domain engine. Persistent tracker creation is not implemented yet.</string>
+    <string name="ok">OK</string>
+</resources>
