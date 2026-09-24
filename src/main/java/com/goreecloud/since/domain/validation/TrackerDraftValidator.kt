@@ -20,7 +20,7 @@ data class TrackerDraft(
     val goalUnit: DisplayFormat? = null,
 )
 
-data class ValidatedTrackerDraft(
+data class ValidatedTrackerDraft internal constructor(
     val title: String,
     val note: String?,
     val kind: TrackerKind,
