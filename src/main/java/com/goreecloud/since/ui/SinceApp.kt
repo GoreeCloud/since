@@ -1,6 +1,7 @@
 package com.goreecloud.since.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -44,6 +46,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
@@ -234,25 +237,30 @@ fun SinceApp(
         return
     }
 
+    val onAddTracker = {
+        selectedTrackerId = null
+        showTypeChooser = true
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = {
-                    selectedTrackerId = null
-                    showTypeChooser = true
-                },
-                shape = MaterialTheme.shapes.large,
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                content = { Text(stringResource(R.string.add_tracker)) },
-            )
+            if (aggregates.isNotEmpty()) {
+                ExtendedFloatingActionButton(
+                    onClick = onAddTracker,
+                    shape = MaterialTheme.shapes.large,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    content = { Text(stringResource(R.string.add_tracker)) },
+                )
+            }
         },
     ) { innerPadding ->
         Dashboard(
             innerPadding = innerPadding,
             aggregates = aggregates,
             clock = clock,
+            onAddTracker = onAddTracker,
             onOpenTracker = { trackerId ->
                 detailUpdateFailed = false
                 selectedTrackerId = trackerId
@@ -278,6 +286,7 @@ private fun Dashboard(
     innerPadding: PaddingValues,
     aggregates: List<TrackerAggregate>,
     clock: Clock,
+    onAddTracker: () -> Unit,
     onOpenTracker: (String) -> Unit,
 ) {
     val dashboardTick by rememberMinuteTick(
@@ -293,7 +302,7 @@ private fun Dashboard(
             start = 20.dp,
             top = 24.dp,
             end = 20.dp,
-            bottom = 112.dp,
+            bottom = if (aggregates.isEmpty()) 32.dp else 112.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
@@ -318,7 +327,7 @@ private fun Dashboard(
 
         if (aggregates.isEmpty()) {
             item {
-                DashboardEmptyState()
+                DashboardEmptyState(onAddTracker = onAddTracker)
             }
         } else {
             items(
@@ -337,7 +346,9 @@ private fun Dashboard(
 }
 
 @Composable
-private fun DashboardEmptyState() {
+private fun DashboardEmptyState(
+    onAddTracker: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
@@ -347,25 +358,38 @@ private fun DashboardEmptyState() {
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Surface(
+                modifier = Modifier.size(64.dp),
                 shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primaryContainer,
+                color = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
-                Text(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                    text = stringResource(R.string.dashboard_empty_status),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    style = MaterialTheme.typography.labelLarge,
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    modifier = Modifier.padding(4.dp),
                 )
             }
             Text(
-                text = stringResource(R.string.dashboard_empty_message),
+                text = stringResource(R.string.dashboard_empty_status),
                 color = MaterialTheme.colorScheme.onSurface,
-                style = MaterialTheme.typography.headlineSmall,
+                style = MaterialTheme.typography.titleLarge,
             )
+            Text(
+                text = stringResource(R.string.dashboard_empty_message),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Button(
+                modifier = Modifier.fillMaxWidth(),
+                onClick = onAddTracker,
+                shape = MaterialTheme.shapes.large,
+            ) {
+                Text(stringResource(R.string.add_tracker))
+            }
         }
     }
 }
