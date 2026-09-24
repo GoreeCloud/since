@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Since</string>
+    <string name="dashboard_title">Since</string>
+    <string name="dashboard_empty_message">تتبّع الوقت المنقضي منذ حدث أو ابدأ سلسلة.</string>
+    <string name="dashboard_empty_status">لا توجد متتبعات بعد</string>
+    <string name="add_tracker">إضافة متتبّع</string>
+
+    <string name="choose_tracker_type">اختر نوع المتتبّع</string>
+    <string name="tracker_kind_event">حدث دائم</string>
+    <string name="tracker_kind_streak">سلسلة</string>
+    <string name="event_description">نقطة تاريخية يستمر الزمن منذها في التراكم ولا يمكن إعادة ضبطها.</string>
+    <string name="streak_description">فترة قابلة لإعادة الضبط مع الاحتفاظ بسجلها.</string>
+
+    <string name="create_tracker_title">إنشاء %1$s</string>
+    <string name="title_label">العنوان</string>
+    <string name="note_label">ملاحظة</string>
+    <string name="start_label">البدء</string>
+    <string name="start_date_time_label">التاريخ والوقت المحليان</string>
+    <string name="start_zone_label">المنطقة الزمنية</string>
+    <string name="start_zone_hint">استخدم منطقة IANA مثل America/Chicago.</string>
+    <string name="use_now">استخدام الآن</string>
+    <string name="dst_overlap_policy">تُرفض الفجوات الناتجة عن التوقيت الصيفي. أثناء التداخل عند الرجوع بالساعة، يستخدم Since الإزاحة الصالحة الأسبق.</string>
+    <string name="icon_accent_deferred">يبقى اختيار الأيقونة واللون المميز مؤجلاً حتى تتوفر خريطة GLAZE معتمدة خاصة بـ Since.</string>
+    <string name="display_format_label">تنسيق العرض</string>
+    <string name="format_days">أيام</string>
+    <string name="format_weeks">أسابيع</string>
+    <string name="format_months">أشهر</string>
+    <string name="format_years">سنوات</string>
+    <string name="goal_label">الهدف</string>
+    <string name="goal_optional_description">اختياري لمتتبعات السلسلة.</string>
+    <string name="goal_amount_label">القيمة المستهدفة</string>
+    <string name="goal_unit_label">وحدة الهدف</string>
+    <string name="goal_summary">الهدف: %1$d %2$s</string>
+
+    <string name="elapsed_label">المنقضي</string>
+    <string name="elapsed_days_detail">%1$d يوم · %2$d ساعة · %3$d دقيقة</string>
+    <string name="elapsed_weeks_detail">%1$d أسبوع · %2$d يوم · %3$d ساعة · %4$d دقيقة</string>
+    <string name="elapsed_months_detail">%1$d شهر · %2$d يوم · %3$d ساعة · %4$d دقيقة</string>
+    <string name="elapsed_years_detail">%1$d سنة · %2$d شهر · %3$d يوم · %4$d ساعة · %5$d دقيقة</string>
+    <string name="clock_inconsistency">تحقق من ساعة الجهاز</string>
+
+    <string name="back">رجوع</string>
+    <string name="edit_tracker">تعديل</string>
+    <string name="edit_tracker_title">تعديل %1$s</string>
+    <string name="edit_history_boundary">يمكن تغيير بداية الفترة الحالية المفتوحة فقط. يظل سجل السلسلة المغلق غير قابل للتعديل.</string>
+    <string name="edit_history_conflict">لا يمكن أن تكون بداية السلسلة الحالية أسبق من نهاية السجل المغلق الموجود.</string>
+    <string name="goal_edit_deferred">يبقى تعديل الهدف ضمن مرحلة أهداف M2.</string>
+    <string name="started_on_label">بدأ في</string>
+    <string name="no_note">لا توجد ملاحظة</string>
+    <string name="display_format_update_failed">تعذر تحديث تنسيق العرض.</string>
+    <string name="goal_progress_deferred">يبقى التقدم والوقت المقدر للإكمال ضمن مرحلة أهداف M2.</string>
+    <string name="details_development_boundary">تبقى الأرشفة والحذف وإعادة الضبط/السجل وتقدم الهدف/المحرر واختيار الأيقونة/اللون المميز والمشاركة ضمن مراحل تطوير لاحقة.</string>
+
+    <string name="save">حفظ</string>
+    <string name="saving">جارٍ الحفظ…</string>
+    <string name="save_failed">تعذر حفظ هذا المتتبّع. يجب ألا يتم الاحتفاظ بأي متتبّع جزئي.</string>
+    <string name="cancel">إلغاء</string>
+</resources>
