@@ -20,6 +20,7 @@ data class TrackerDraft(
     val goalUnit: DisplayFormat? = null,
 )
 
+@ConsistentCopyVisibility
 data class ValidatedTrackerDraft internal constructor(
     val title: String,
     val note: String?,

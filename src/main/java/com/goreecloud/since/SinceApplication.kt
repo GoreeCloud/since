@@ -6,6 +6,8 @@ import com.goreecloud.since.data.repository.RoomTrackerRepository
 import java.time.Clock
 
 class SinceApplication : Application() {
+    val clock: Clock = Clock.systemUTC()
+
     val database by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         SinceDatabaseFactory.build(this)
     }
@@ -13,7 +15,7 @@ class SinceApplication : Application() {
     val trackerRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         RoomTrackerRepository(
             dao = database.trackerDao(),
-            clock = Clock.systemUTC(),
+            clock = clock,
         )
     }
 }

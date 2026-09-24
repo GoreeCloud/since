@@ -22,6 +22,12 @@ abstract class TrackerDao {
     )
     abstract fun observeActiveTrackedEvents(): Flow<List<TrackedEventEntity>>
 
+    @Query("SELECT * FROM event_periods ORDER BY event_id, sequence")
+    abstract fun observeAllPeriods(): Flow<List<EventPeriodEntity>>
+
+    @Query("SELECT * FROM event_goals ORDER BY event_id")
+    abstract fun observeAllGoals(): Flow<List<EventGoalEntity>>
+
     @Query("SELECT * FROM tracked_events WHERE id = :eventId")
     protected abstract suspend fun readTrackedEvent(eventId: String): TrackedEventEntity?
 
@@ -39,6 +45,17 @@ abstract class TrackerDao {
             "WHERE event_id = :eventId AND end_epoch_ms IS NULL"
     )
     abstract suspend fun openPeriodCount(eventId: String): Int
+
+    @Query(
+        "UPDATE tracked_events " +
+            "SET default_display_format = :displayFormat, updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :eventId AND is_archived = 0"
+    )
+    abstract suspend fun updateDisplayFormat(
+        eventId: String,
+        displayFormat: String,
+        updatedAtEpochMs: Long,
+    ): Int
 
     @Insert
     abstract suspend fun insertTrackedEvent(entity: TrackedEventEntity)
