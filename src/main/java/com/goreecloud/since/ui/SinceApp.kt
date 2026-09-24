@@ -1,7 +1,9 @@
 package com.goreecloud.since.ui
 
+import android.text.format.DateFormat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -22,6 +24,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +37,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +57,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -70,7 +79,9 @@ import com.goreecloud.since.domain.validation.TrackerDraftValidation
 import com.goreecloud.since.domain.validation.TrackerDraftValidator
 import java.time.Clock
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import kotlinx.coroutines.delay
@@ -1260,6 +1271,7 @@ private fun CreateTrackerScreen(
 
             SectionCard {
                 StartEditorFields(
+                    clock = clock,
                     startDateTime = startDateTime,
                     onStartDateTimeChange = {
                         startDateTime = it
@@ -1462,6 +1474,7 @@ private fun EditTrackerScreen(
 
             SectionCard {
                 StartEditorFields(
+                    clock = clock,
                     startDateTime = startDateTime,
                     onStartDateTimeChange = {
                         startDateTime = it
@@ -1552,8 +1565,13 @@ private fun EditTrackerScreen(
     }
 }
 
+private val startEditorDateTimeFormatter =
+    DateTimeFormatter.ofPattern("uuuu-MM-dd HH:mm")
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StartEditorFields(
+    clock: Clock,
     startDateTime: String,
     onStartDateTimeChange: (String) -> Unit,
     startZoneId: String,
@@ -1562,22 +1580,55 @@ private fun StartEditorFields(
     enabled: Boolean,
     onUseNow: () -> Unit,
 ) {
+    val context = LocalContext.current
+    val fallbackZone = remember(startZoneId) {
+        runCatching { ZoneId.of(startZoneId.trim()) }
+            .getOrDefault(ZoneId.systemDefault())
+    }
+    val startLocalDateTime = remember(startDateTime, fallbackZone, clock) {
+        runCatching {
+            LocalDateTime.parse(startDateTime.trim(), startEditorDateTimeFormatter)
+        }.getOrElse {
+            LocalDateTime.ofInstant(
+                Instant.ofEpochMilli(clock.millis()),
+                fallbackZone,
+            )
+        }
+    }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var showTimePicker by rememberSaveable { mutableStateOf(false) }
+
     Text(
         text = stringResource(R.string.start_label),
         style = MaterialTheme.typography.titleMedium,
     )
-    OutlinedTextField(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag("start-date-time-field"),
-        value = startDateTime,
-        onValueChange = onStartDateTimeChange,
-        label = { Text(stringResource(R.string.start_date_time_label)) },
-        supportingText = { Text(TrackerStartInput.FORMAT_HINT) },
-        singleLine = true,
-        shape = MaterialTheme.shapes.medium,
-        enabled = enabled,
-    )
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        StartPickerField(
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.start_date_label),
+            value = DateTimeFormatter
+                .ofLocalizedDate(FormatStyle.SHORT)
+                .format(startLocalDateTime.toLocalDate()),
+            testTag = "start-date-picker",
+            enabled = enabled,
+            onClick = { showDatePicker = true },
+        )
+        StartPickerField(
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.start_time_label),
+            value = DateTimeFormatter
+                .ofLocalizedTime(FormatStyle.SHORT)
+                .format(startLocalDateTime.toLocalTime()),
+            testTag = "start-time-picker",
+            enabled = enabled,
+            onClick = { showTimePicker = true },
+        )
+    }
+
     OutlinedTextField(
         modifier = Modifier
             .fillMaxWidth()
@@ -1605,6 +1656,155 @@ private fun StartEditorFields(
             color = MaterialTheme.colorScheme.error,
             style = MaterialTheme.typography.bodyMedium,
         )
+    }
+
+    if (showDatePicker) {
+        val initialDateMillis = startLocalDateTime
+            .toLocalDate()
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+        val datePickerState = rememberDatePickerState(
+            initialSelectedDateMillis = initialDateMillis,
+        )
+
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val selectedDateMillis = datePickerState.selectedDateMillis
+                        if (selectedDateMillis != null) {
+                            val selectedDate = Instant
+                                .ofEpochMilli(selectedDateMillis)
+                                .atZone(ZoneOffset.UTC)
+                                .toLocalDate()
+                            onStartDateTimeChange(
+                                startEditorDateTimeFormatter.format(
+                                    LocalDateTime.of(
+                                        selectedDate,
+                                        startLocalDateTime.toLocalTime(),
+                                    )
+                                )
+                            )
+                        }
+                        showDatePicker = false
+                    },
+                ) {
+                    Text(stringResource(R.string.done))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        ) {
+            DatePicker(
+                state = datePickerState,
+                modifier = Modifier.testTag("start-date-picker-dialog"),
+                title = {
+                    Text(
+                        modifier = Modifier.padding(
+                            start = 24.dp,
+                            top = 16.dp,
+                            end = 24.dp,
+                        ),
+                        text = stringResource(R.string.select_date_title),
+                        style = MaterialTheme.typography.labelLarge,
+                    )
+                },
+                showModeToggle = false,
+            )
+        }
+    }
+
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = startLocalDateTime.hour,
+            initialMinute = startLocalDateTime.minute,
+            is24Hour = DateFormat.is24HourFormat(context),
+        )
+
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = {
+                Text(stringResource(R.string.select_time_title))
+            },
+            text = {
+                TimePicker(
+                    state = timePickerState,
+                    modifier = Modifier.testTag("start-time-picker-dialog"),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onStartDateTimeChange(
+                            startEditorDateTimeFormatter.format(
+                                startLocalDateTime
+                                    .withHour(timePickerState.hour)
+                                    .withMinute(timePickerState.minute)
+                            )
+                        )
+                        showTimePicker = false
+                    },
+                ) {
+                    Text(stringResource(R.string.done))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun StartPickerField(
+    modifier: Modifier,
+    label: String,
+    value: String,
+    testTag: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = modifier
+            .testTag(testTag)
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                onClick = onClick,
+            ),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.outline
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            },
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
     }
 }
 

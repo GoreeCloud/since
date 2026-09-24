@@ -17,6 +17,11 @@
     <string name="note_label">ملاحظة</string>
     <string name="start_label">البدء</string>
     <string name="start_date_time_label">التاريخ والوقت المحليان</string>
+    <string name="start_date_label">التاريخ</string>
+    <string name="start_time_label">الوقت</string>
+    <string name="select_date_title">اختر التاريخ</string>
+    <string name="select_time_title">اختر الوقت</string>
+    <string name="done">تم</string>
     <string name="start_zone_label">المنطقة الزمنية</string>
     <string name="start_zone_hint">استخدم منطقة IANA مثل America/Chicago.</string>
     <string name="use_now">استخدام الآن</string>

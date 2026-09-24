@@ -119,7 +119,7 @@ class SinceAccessibilityTest {
     }
 
     @Test
-    fun customPastStartCreateThenEditRemainsReachableAndPersists() {
+    fun dateAndTimePickersAreReachableAndCreateThenEditPersists() {
         val repository = FakeTrackerRepository(
             initial = emptyList(),
             clock = clock,
@@ -138,15 +138,27 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithText("Permanent Event").performClick()
 
         composeRule.onNodeWithTag("title-field").performTextInput("First car")
-        composeRule.onNodeWithTag("start-date-time-field").performTextClearance()
-        composeRule.onNodeWithTag("start-date-time-field").performTextInput("2026-09-20 12:30")
-        composeRule.onNodeWithTag("start-zone-field").performTextClearance()
-        composeRule.onNodeWithTag("start-zone-field").performTextInput("America/Chicago")
+
+        composeRule
+            .onNodeWithTag("start-date-picker")
+            .performScrollTo()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.onNodeWithTag("start-date-picker-dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").performClick()
+
+        composeRule
+            .onNodeWithTag("start-time-picker")
+            .performScrollTo()
+            .assertHasClickAction()
+            .performClick()
+        composeRule.onNodeWithTag("start-time-picker-dialog").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").performClick()
+
         composeRule.onNodeWithText("Save").performScrollTo().performClick()
 
         composeRule.waitForIdle()
         composeRule.onNodeWithText("First car").assertIsDisplayed()
-        composeRule.onNodeWithText("America/Chicago").assertIsDisplayed()
 
         composeRule.onNodeWithText("Edit").performClick()
         composeRule.onNodeWithTag("title-field").performTextClearance()
@@ -157,7 +169,7 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithText("First car edited").assertIsDisplayed()
         assertEquals("First car edited", repository.current.single().tracker.title)
         assertEquals(
-            ZoneId.of("America/Chicago").id,
+            ZoneId.systemDefault().id,
             repository.current.single().periods.single().startZoneId,
         )
     }
@@ -184,7 +196,8 @@ class SinceAccessibilityTest {
         composeRule.onNodeWithText("Permanent Event").performClick()
 
         composeRule.onNodeWithTag("title-field").assertIsDisplayed()
-        composeRule.onNodeWithTag("start-date-time-field").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("start-date-picker").performScrollTo().assertIsDisplayed()
+        composeRule.onNodeWithTag("start-time-picker").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithTag("start-zone-field").performScrollTo().assertIsDisplayed()
         composeRule.onNodeWithText("Save").performScrollTo().assertIsDisplayed()
     }

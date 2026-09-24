@@ -94,6 +94,9 @@ class SinceVisualEvidenceTest {
             "Rendered night-mode evidence requires Android 12 or newer."
         }
 
+        val activityBeforeChange = composeRule.activity
+        val previousNightMask = activityBeforeChange.resources.configuration.uiMode and
+            Configuration.UI_MODE_NIGHT_MASK
         val uiModeManager = InstrumentationRegistry.getInstrumentation()
             .targetContext
             .getSystemService(UiModeManager::class.java)
@@ -104,8 +107,16 @@ class SinceVisualEvidenceTest {
             else -> Configuration.UI_MODE_NIGHT_NO
         }
         composeRule.waitUntil(timeoutMillis = 10_000) {
-            composeRule.activity.resources.configuration.uiMode and
-                Configuration.UI_MODE_NIGHT_MASK == expectedNightMask
+            val currentActivity = runCatching { composeRule.activity }.getOrNull()
+            currentActivity != null &&
+                (
+                    currentActivity.resources.configuration.uiMode and
+                        Configuration.UI_MODE_NIGHT_MASK
+                ) == expectedNightMask &&
+                (
+                    previousNightMask == expectedNightMask ||
+                        currentActivity !== activityBeforeChange
+                )
         }
         composeRule.waitForIdle()
     }
