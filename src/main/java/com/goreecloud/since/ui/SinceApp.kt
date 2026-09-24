@@ -65,6 +65,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.goreecloud.since.R
+import com.goreecloud.since.data.preferences.ThemePreference
 import com.goreecloud.since.domain.model.DisplayFormat
 import com.goreecloud.since.domain.model.TrackerAggregate
 import com.goreecloud.since.domain.model.TrackerKind
@@ -93,6 +94,8 @@ import kotlinx.coroutines.launch
 fun SinceApp(
     repository: TrackerRepository,
     clock: Clock,
+    themePreference: ThemePreference = ThemePreference.SYSTEM,
+    onThemePreferenceChange: (ThemePreference) -> Unit = {},
 ) {
     val aggregates by repository
         .observeActiveTrackerAggregates()
@@ -110,6 +113,12 @@ fun SinceApp(
     var goalUpdateFailed by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var isGoalSaving by remember { mutableStateOf(false) }
+    var topLevelDestinationName by rememberSaveable {
+        mutableStateOf(TopLevelDestination.HOME.name)
+    }
+    val topLevelDestination = runCatching {
+        TopLevelDestination.valueOf(topLevelDestinationName)
+    }.getOrDefault(TopLevelDestination.HOME)
     val historyConflictMessage = stringResource(R.string.edit_history_conflict)
 
     val editorKind = editorKindName?.let { runCatching { TrackerKind.valueOf(it) }.getOrNull() }
@@ -284,14 +293,26 @@ fun SinceApp(
     }
 
     val onAddTracker = {
+        topLevelDestinationName = TopLevelDestination.HOME.name
         selectedTrackerId = null
         showTypeChooser = true
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            SinceTopLevelNavigationBar(
+                selected = topLevelDestination,
+                onSelect = { destination ->
+                    topLevelDestinationName = destination.name
+                },
+            )
+        },
         floatingActionButton = {
-            if (aggregates.isNotEmpty()) {
+            if (
+                topLevelDestination == TopLevelDestination.HOME &&
+                aggregates.isNotEmpty()
+            ) {
                 ExtendedFloatingActionButton(
                     onClick = onAddTracker,
                     shape = MaterialTheme.shapes.large,
@@ -302,17 +323,31 @@ fun SinceApp(
             }
         },
     ) { innerPadding ->
-        Dashboard(
-            innerPadding = innerPadding,
-            aggregates = aggregates,
-            clock = clock,
-            onAddTracker = onAddTracker,
-            onOpenTracker = { trackerId ->
-                detailUpdateFailed = false
-                goalUpdateFailed = false
-                selectedTrackerId = trackerId
-            },
-        )
+        when (topLevelDestination) {
+            TopLevelDestination.HOME -> Dashboard(
+                innerPadding = innerPadding,
+                aggregates = aggregates,
+                clock = clock,
+                onAddTracker = onAddTracker,
+                onOpenTracker = { trackerId ->
+                    detailUpdateFailed = false
+                    goalUpdateFailed = false
+                    selectedTrackerId = trackerId
+                },
+            )
+
+            TopLevelDestination.ACHIEVEMENTS -> AchievementsScreen(
+                innerPadding = innerPadding,
+                aggregates = aggregates,
+                clock = clock,
+            )
+
+            TopLevelDestination.SETTINGS -> SettingsScreen(
+                innerPadding = innerPadding,
+                themePreference = themePreference,
+                onThemePreferenceChange = onThemePreferenceChange,
+            )
+        }
     }
 
     if (showTypeChooser) {

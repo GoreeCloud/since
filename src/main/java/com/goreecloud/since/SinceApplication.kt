@@ -2,6 +2,7 @@ package com.goreecloud.since
 
 import android.app.Application
 import com.goreecloud.since.data.local.SinceDatabaseFactory
+import com.goreecloud.since.data.preferences.SincePreferencesRepository
 import com.goreecloud.since.data.repository.RoomTrackerRepository
 import java.time.Clock
 
@@ -17,5 +18,9 @@ class SinceApplication : Application() {
             dao = database.trackerDao(),
             clock = clock,
         )
+    }
+
+    val preferencesRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        SincePreferencesRepository(this)
     }
 }

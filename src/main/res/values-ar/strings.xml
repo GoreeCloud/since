@@ -6,6 +6,49 @@
     <string name="dashboard_empty_status">لا توجد متتبعات بعد</string>
     <string name="add_tracker">إضافة متتبّع</string>
 
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_achievements">الإنجازات</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <string name="achievements_title">الإنجازات</string>
+    <string name="achievements_summary">تم فتح %1$d من %2$d</string>
+    <string name="achievements_privacy_note">تُحسب الإنجازات محليًا من بيانات المتتبعات لديك. لا توجد لوحة صدارة أو تصنيفات اجتماعية.</string>
+    <string name="achievement_first_tracker">بداية موفقة</string>
+    <string name="achievement_first_tracker_description">أنشئ أول متتبّع لك.</string>
+    <string name="achievement_first_streak">بدأت السلسلة</string>
+    <string name="achievement_first_streak_description">أنشئ أول سلسلة لك.</string>
+    <string name="achievement_goal_setter">واضع الهدف</string>
+    <string name="achievement_goal_setter_description">أضف هدف مدة إلى سلسلة.</string>
+    <string name="achievement_seven_days">سبعة أيام</string>
+    <string name="achievement_seven_days_description">حافظ على سلسلة حالية واحدة لمدة سبعة أيام على الأقل.</string>
+    <string name="achievement_thirty_days">ثلاثون يومًا</string>
+    <string name="achievement_thirty_days_description">حافظ على سلسلة حالية واحدة لمدة ثلاثين يومًا على الأقل.</string>
+
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_summary">المظهر والاسترداد والخصوصية والأمان ومعلومات التطبيق.</string>
+    <string name="settings_appearance">المظهر</string>
+    <string name="settings_theme">السمة</string>
+    <string name="theme_system">إعداد النظام</string>
+    <string name="theme_light">فاتحة</string>
+    <string name="theme_dark">داكنة</string>
+    <string name="settings_data_recovery">البيانات والاسترداد</string>
+    <string name="settings_backup">النسخ الاحتياطي</string>
+    <string name="settings_backup_supporting">احمِ بيانات Since المحلية بنسخة احتياطية تم التحقق منها.</string>
+    <string name="settings_restore">الاستعادة</string>
+    <string name="settings_restore_supporting">استعد بيانات Since من نسخة احتياطية تم التحقق منها.</string>
+    <string name="settings_planned">مخطط</string>
+    <string name="settings_backup_not_ready">النسخ الاحتياطي غير مفعّل بعد. سيبقى Since مغلقًا بأمان حتى يتم تنفيذ صيغة النسخ وفحوص السلامة والتحقق من الاستعادة واعتمادها.</string>
+    <string name="settings_restore_not_ready">الاستعادة غير مفعّلة بعد. لن يعرض Since إجراء استرداد حتى يمكن للتحقق من الاستعادة حماية بياناتك المحلية الحالية.</string>
+    <string name="settings_privacy_security">الخصوصية والأمان</string>
+    <string name="settings_privacy">الخصوصية</string>
+    <string name="settings_privacy_supporting">إصدار تطوير محلي أولًا دون حاجة إلى الشبكة أو إعلانات أو تحليلات سلوكية.</string>
+    <string name="settings_security">الأمان</string>
+    <string name="settings_security_supporting">حماية صندوق تطبيق Android فعّالة؛ ويظل تكامل Wardveil الإضافي متطلب قبول منفصل.</string>
+    <string name="settings_about">حول</string>
+    <string name="settings_app_version">إصدار التطبيق</string>
+    <string name="settings_build_status">حالة البناء</string>
+    <string name="settings_development_build">تطوير</string>
+
     <string name="choose_tracker_type">اختر نوع المتتبّع</string>
     <string name="tracker_kind_event">حدث دائم</string>
     <string name="tracker_kind_streak">سلسلة</string>
