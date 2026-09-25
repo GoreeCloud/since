@@ -1,17 +1,9 @@
 package com.goreecloud.since.visual
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import android.graphics.Bitmap
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -20,7 +12,6 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
-import androidx.core.view.WindowCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import com.goreecloud.since.testutil.FakeTrackerRepository
 import com.goreecloud.since.ui.SinceApp
@@ -63,7 +54,6 @@ class SinceVisualEvidenceTest {
 
         composeRule.setContent {
             SinceTheme(darkTheme = darkTheme) {
-                VisualEvidenceSystemBars(darkTheme = darkTheme)
                 SinceApp(
                     repository = repository,
                     clock = clock,
@@ -170,23 +160,6 @@ class SinceVisualEvidenceTest {
         composeRule.onNodeWithText("Cancel").performClick()
     }
 
-    @Composable
-    private fun VisualEvidenceSystemBars(darkTheme: Boolean) {
-        val view = LocalView.current
-        val background = MaterialTheme.colorScheme.background.toArgb()
-
-        SideEffect {
-            val activity = view.context.findActivity() ?: return@SideEffect
-            activity.window.statusBarColor = background
-            activity.window.navigationBarColor = background
-            activity.window.isNavigationBarContrastEnforced = false
-            WindowCompat.getInsetsController(activity.window, view).apply {
-                isAppearanceLightStatusBars = !darkTheme
-                isAppearanceLightNavigationBars = !darkTheme
-            }
-        }
-    }
-
     private fun capture(name: String) {
         composeRule.waitForIdle()
 
@@ -214,10 +187,3 @@ class SinceVisualEvidenceTest {
     }
 }
 
-
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
