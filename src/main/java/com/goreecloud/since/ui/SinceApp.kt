@@ -99,6 +99,7 @@ import com.goreecloud.since.domain.time.TrackerStartResolution
 import com.goreecloud.since.domain.validation.TrackerDraft
 import com.goreecloud.since.domain.validation.TrackerDraftValidation
 import com.goreecloud.since.domain.validation.TrackerDraftValidator
+import com.goreecloud.since.domain.validation.TrackerDuplicateDraft
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDateTime
@@ -227,12 +228,14 @@ fun SinceApp(
     var goalUpdateFailed by rememberSaveable { mutableStateOf(false) }
     var resetFailed by rememberSaveable { mutableStateOf(false) }
     var archiveFailed by rememberSaveable { mutableStateOf(false) }
+    var duplicateFailed by rememberSaveable { mutableStateOf(false) }
     var restoreFailedTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteFailedTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var isGoalSaving by remember { mutableStateOf(false) }
     var isResetting by remember { mutableStateOf(false) }
     var isArchiving by remember { mutableStateOf(false) }
+    var isDuplicating by remember { mutableStateOf(false) }
     var restoringTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var deletingTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var historyTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -377,9 +380,11 @@ fun SinceApp(
             goalUpdateFailed = goalUpdateFailed,
             resetFailed = resetFailed,
             archiveFailed = archiveFailed,
+            duplicateFailed = duplicateFailed,
             isGoalSaving = isGoalSaving,
             isResetting = isResetting,
             isArchiving = isArchiving,
+            isDuplicating = isDuplicating,
             onBack = {
                 selectedTrackerId = null
                 editingTrackerId = null
@@ -388,6 +393,7 @@ fun SinceApp(
                 goalUpdateFailed = false
                 resetFailed = false
                 archiveFailed = false
+                duplicateFailed = false
             },
             onEdit = {
                 validationErrors = emptyList()
@@ -396,6 +402,37 @@ fun SinceApp(
             },
             onOpenHistory = {
                 historyTrackerId = selectedAggregate.tracker.id
+            },
+            onDuplicate = {
+                duplicateFailed = false
+                when (
+                    val validation = validator.validate(
+                        TrackerDuplicateDraft.from(selectedAggregate),
+                    )
+                ) {
+                    is TrackerDraftValidation.Invalid -> {
+                        duplicateFailed = true
+                    }
+
+                    is TrackerDraftValidation.Valid -> {
+                        isDuplicating = true
+                        scope.launch {
+                            val duplicated = runCatching {
+                                repository.createTracker(validation.draft)
+                            }.getOrNull()
+                            if (duplicated == null) {
+                                duplicateFailed = true
+                            } else {
+                                selectedTrackerId = duplicated.tracker.id
+                                detailUpdateFailed = false
+                                goalUpdateFailed = false
+                                resetFailed = false
+                                archiveFailed = false
+                            }
+                            isDuplicating = false
+                        }
+                    }
+                }
             },
             onArchive = {
                 archiveFailed = false
@@ -1421,12 +1458,15 @@ private fun TrackerDetailsScreen(
     goalUpdateFailed: Boolean,
     resetFailed: Boolean,
     archiveFailed: Boolean,
+    duplicateFailed: Boolean,
     isGoalSaving: Boolean,
     isResetting: Boolean,
     isArchiving: Boolean,
+    isDuplicating: Boolean,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     onOpenHistory: () -> Unit,
+    onDuplicate: () -> Unit,
     onArchive: () -> Unit,
     onResetStreak: (Long, String, String?, String?) -> Unit,
     onDisplayFormatChange: (DisplayFormat) -> Unit,
@@ -1581,7 +1621,10 @@ private fun TrackerDetailsScreen(
                 TextButton(onClick = onBack) {
                     Text(stringResource(R.string.back))
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     TextButton(
                         onClick = {
                             val sendIntent = Intent(Intent.ACTION_SEND).apply {
@@ -1597,10 +1640,33 @@ private fun TrackerDetailsScreen(
                     ) {
                         Text(stringResource(R.string.share_tracker))
                     }
+                    TextButton(
+                        onClick = onDuplicate,
+                        enabled = !isDuplicating,
+                    ) {
+                        Text(
+                            if (isDuplicating) {
+                                stringResource(R.string.duplicating_tracker)
+                            } else {
+                                stringResource(R.string.duplicate_tracker)
+                            },
+                        )
+                    }
                     TextButton(onClick = onEdit) {
                         Text(stringResource(R.string.edit_tracker))
                     }
                 }
+            }
+
+            if (duplicateFailed) {
+                Text(
+                    modifier = Modifier.semantics {
+                        liveRegion = LiveRegionMode.Assertive
+                    },
+                    text = stringResource(R.string.duplicate_tracker_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
             }
 
             Card(

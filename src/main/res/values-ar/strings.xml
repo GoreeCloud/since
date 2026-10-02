@@ -251,4 +251,7 @@
     <string name="share_tracker">مشاركة</string>
     <string name="share_tracker_chooser">مشاركة المتعقب</string>
     <string name="share_tracker_summary">%1$s\nالمدة المنقضية: %2$s\nبدأ: %3$s\n\nتمت المشاركة من Since</string>
+    <string name="duplicate_tracker">تكرار</string>
+    <string name="duplicating_tracker">جارٍ التكرار…</string>
+    <string name="duplicate_tracker_failed">تعذّر تكرار هذا المتتبّع. لم يتم تغيير المتتبّع الأصلي.</string>
 </resources>

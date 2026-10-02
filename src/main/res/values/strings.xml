@@ -250,4 +250,7 @@
     <string name="share_tracker">Share</string>
     <string name="share_tracker_chooser">Share tracker</string>
     <string name="share_tracker_summary">%1$s\nElapsed: %2$s\nStarted: %3$s\n\nShared from Since</string>
+    <string name="duplicate_tracker">Duplicate</string>
+    <string name="duplicating_tracker">Duplicating…</string>
+    <string name="duplicate_tracker_failed">Could not duplicate this tracker. Your original tracker was not changed.</string>
 </resources>
