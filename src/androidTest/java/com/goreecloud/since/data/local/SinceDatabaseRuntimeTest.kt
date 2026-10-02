@@ -22,6 +22,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
@@ -454,6 +455,236 @@ class SinceDatabaseRuntimeTest {
     }
 
     @Test
+    fun repositoryResetStreakClosesHistoryAndStartsNextPeriodAtomically() = runBlocking {
+        val now = Instant.parse("2026-09-24T18:00:00Z")
+        val resetAt = now.minusSeconds(3_600)
+        val generatedIds = mutableListOf("reset-next-period").iterator()
+        val repository = RoomTrackerRepository(
+            dao = dao,
+            clock = Clock.fixed(now, ZoneId.of("UTC")),
+            idFactory = { generatedIds.next() },
+        )
+        val tracker = trackerEntity(id = "reset-streak", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = tracker,
+            initialPeriod = periodEntity(
+                id = "reset-period-0",
+                eventId = tracker.id,
+                sequence = 0,
+                start = now.minusSeconds(86_400).toEpochMilli(),
+            ),
+            goal = EventGoalEntity(
+                eventId = tracker.id,
+                targetAmount = 30,
+                targetUnit = DisplayFormat.DAYS.name,
+                createdAtEpochMs = 10_000L,
+                updatedAtEpochMs = 10_000L,
+            ),
+        )
+
+        val reset = repository.resetStreak(
+            trackerId = tracker.id,
+            resetEpochMs = resetAt.toEpochMilli(),
+            resetZoneId = "America/Chicago",
+            reason = "  Restarted plan  ",
+            note = "  Kept for history.  ",
+        )
+
+        assertNotNull(reset)
+        assertEquals(2, reset!!.periods.size)
+        assertEquals(1, dao.openPeriodCount(tracker.id))
+        val closed = reset.periods.single { it.endEpochMs != null }
+        assertEquals(resetAt.toEpochMilli(), closed.endEpochMs)
+        assertEquals("America/Chicago", closed.endZoneId)
+        assertEquals("Restarted plan", closed.resetReason)
+        assertEquals("Kept for history.", closed.resetNote)
+        val current = reset.periods.single { it.endEpochMs == null }
+        assertEquals(1, current.sequence)
+        assertEquals("reset-next-period", current.id)
+        assertEquals(resetAt.toEpochMilli(), current.startEpochMs)
+        assertEquals("America/Chicago", current.startZoneId)
+        assertEquals(30, reset.goal!!.targetAmount)
+        assertEquals(now.toEpochMilli(), reset.tracker.updatedAtEpochMs)
+    }
+
+    @Test
+    fun repositoryResetStreakRollsBackIfNextPeriodInsertFails() = runBlocking {
+        val now = Instant.parse("2026-09-24T18:00:00Z")
+        val clock = Clock.fixed(now, ZoneId.of("UTC"))
+        val collisionPeriodId = "existing-period-id"
+        val repository = RoomTrackerRepository(
+            dao = dao,
+            clock = clock,
+            idFactory = { collisionPeriodId },
+        )
+        val streak = trackerEntity(id = "reset-rollback", kind = TrackerKind.STREAK)
+        val streakStart = now.minusSeconds(7_200).toEpochMilli()
+        dao.createTrackerAggregate(
+            tracker = streak,
+            initialPeriod = periodEntity(
+                id = "reset-rollback-period",
+                eventId = streak.id,
+                sequence = 0,
+                start = streakStart,
+            ),
+            goal = null,
+        )
+
+        val other = trackerEntity(id = "collision-owner", kind = TrackerKind.EVENT)
+        dao.createTrackerAggregate(
+            tracker = other,
+            initialPeriod = periodEntity(
+                id = collisionPeriodId,
+                eventId = other.id,
+                sequence = 0,
+                start = streakStart,
+            ),
+            goal = null,
+        )
+
+        val resetFailure = runCatching {
+            repository.resetStreak(
+                trackerId = streak.id,
+                resetEpochMs = now.minusSeconds(60).toEpochMilli(),
+                resetZoneId = "UTC",
+                reason = "Should roll back",
+                note = null,
+            )
+        }
+
+        assertTrue(resetFailure.isFailure)
+        val preserved = repository.loadTracker(streak.id)!!
+        assertEquals(1, preserved.periods.size)
+        assertEquals(null, preserved.periods.single().endEpochMs)
+        assertEquals(10_000L, preserved.tracker.updatedAtEpochMs)
+        assertEquals(1, dao.openPeriodCount(streak.id))
+    }
+
+    @Test
+    fun repositoryResetStreakRejectsInvalidZoneAndOversizedMetadataWithoutMutation() = runBlocking {
+        val now = Instant.parse("2026-09-24T18:00:00Z")
+        val repository = RoomTrackerRepository(
+            dao = dao,
+            clock = Clock.fixed(now, ZoneId.of("UTC")),
+        )
+        val streak = trackerEntity(id = "reset-input-validation", kind = TrackerKind.STREAK)
+        val start = now.minusSeconds(7_200).toEpochMilli()
+        dao.createTrackerAggregate(
+            tracker = streak,
+            initialPeriod = periodEntity(
+                id = "reset-input-validation-period",
+                eventId = streak.id,
+                sequence = 0,
+                start = start,
+            ),
+            goal = null,
+        )
+
+        suspend fun assertRejected(
+            resetZoneId: String,
+            reason: String?,
+            note: String?,
+        ) {
+            assertEquals(
+                null,
+                repository.resetStreak(
+                    trackerId = streak.id,
+                    resetEpochMs = now.minusSeconds(60).toEpochMilli(),
+                    resetZoneId = resetZoneId,
+                    reason = reason,
+                    note = note,
+                ),
+            )
+            val unchanged = repository.loadTracker(streak.id)!!
+            assertEquals(1, unchanged.periods.size)
+            assertEquals(null, unchanged.periods.single().endEpochMs)
+            assertEquals(10_000L, unchanged.tracker.updatedAtEpochMs)
+            assertEquals(1, dao.openPeriodCount(streak.id))
+        }
+
+        assertRejected(
+            resetZoneId = "Not/A_Real_Zone",
+            reason = null,
+            note = null,
+        )
+        assertRejected(
+            resetZoneId = "UTC",
+            reason = "r".repeat(121),
+            note = null,
+        )
+        assertRejected(
+            resetZoneId = "UTC",
+            reason = null,
+            note = "n".repeat(2_001),
+        )
+    }
+
+    @Test
+    fun repositoryResetStreakRejectsInvalidChronologyAndPermanentEvents() = runBlocking {
+        val now = Instant.parse("2026-09-24T18:00:00Z")
+        val clock = Clock.fixed(now, ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+        val streak = trackerEntity(id = "reset-invalid", kind = TrackerKind.STREAK)
+        val start = now.minusSeconds(7_200).toEpochMilli()
+        dao.createTrackerAggregate(
+            tracker = streak,
+            initialPeriod = periodEntity(
+                id = "reset-invalid-period",
+                eventId = streak.id,
+                sequence = 0,
+                start = start,
+            ),
+            goal = null,
+        )
+
+        assertEquals(
+            null,
+            repository.resetStreak(
+                trackerId = streak.id,
+                resetEpochMs = start - 1,
+                resetZoneId = "UTC",
+                reason = null,
+                note = null,
+            ),
+        )
+        assertEquals(
+            null,
+            repository.resetStreak(
+                trackerId = streak.id,
+                resetEpochMs = now.plusSeconds(1).toEpochMilli(),
+                resetZoneId = "UTC",
+                reason = null,
+                note = null,
+            ),
+        )
+        assertEquals(1, dao.openPeriodCount(streak.id))
+        assertEquals(1, repository.loadTracker(streak.id)!!.periods.size)
+
+        val event = trackerEntity(id = "reset-event", kind = TrackerKind.EVENT)
+        dao.createTrackerAggregate(
+            tracker = event,
+            initialPeriod = periodEntity(
+                id = "reset-event-period",
+                eventId = event.id,
+                sequence = 0,
+                start = start,
+            ),
+            goal = null,
+        )
+        assertEquals(
+            null,
+            repository.resetStreak(
+                trackerId = event.id,
+                resetEpochMs = now.minusSeconds(60).toEpochMilli(),
+                resetZoneId = "UTC",
+                reason = null,
+                note = null,
+            ),
+        )
+        assertEquals(1, repository.loadTracker(event.id)!!.periods.size)
+    }
+
+    @Test
     fun aggregateObservationReactsToPeriodChanges() = runBlocking {
         val clock = Clock.fixed(Instant.parse("2026-09-23T18:00:00Z"), ZoneId.of("UTC"))
         val repository = RoomTrackerRepository(dao = dao, clock = clock)
@@ -525,6 +756,85 @@ class SinceDatabaseRuntimeTest {
         )
 
         assertEquals(14, changed.await().single().goal!!.targetAmount)
+    }
+
+
+    @Test
+    fun archiveAndRestorePreserveTrackerHistoryAndGoal() = runBlocking {
+        val clock = Clock.fixed(Instant.parse("2026-09-28T20:00:00Z"), ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+        val tracker = trackerEntity(id = "archive-round-trip", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = tracker,
+            initialPeriod = periodEntity(
+                id = "archive-current",
+                eventId = tracker.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = EventGoalEntity(
+                eventId = tracker.id,
+                targetAmount = 30,
+                targetUnit = DisplayFormat.DAYS.name,
+                createdAtEpochMs = 10_000L,
+                updatedAtEpochMs = 10_000L,
+            ),
+        )
+
+        val archived = repository.archiveTracker(tracker.id)
+        assertNotNull(archived)
+        assertTrue(archived!!.tracker.isArchived)
+        assertTrue(repository.observeActiveTrackerAggregates().first().isEmpty())
+
+        val archivedList = repository.observeArchivedTrackerAggregates().first()
+        assertEquals(1, archivedList.size)
+        assertEquals(tracker.id, archivedList.single().tracker.id)
+        assertEquals(1, archivedList.single().periods.size)
+        assertEquals(30, archivedList.single().goal?.targetAmount)
+
+        val restored = repository.restoreTracker(tracker.id)
+        assertNotNull(restored)
+        assertFalse(restored!!.tracker.isArchived)
+        assertTrue(repository.observeArchivedTrackerAggregates().first().isEmpty())
+
+        val active = repository.observeActiveTrackerAggregates().first().single()
+        assertEquals(tracker.id, active.tracker.id)
+        assertEquals(1, active.periods.size)
+        assertEquals(30, active.goal?.targetAmount)
+    }
+
+    @Test
+    fun deleteArchivedTrackerRejectsActiveAndCascadesArchivedData() = runBlocking {
+        val clock = Clock.fixed(Instant.parse("2026-09-29T12:00:00Z"), ZoneId.of("UTC"))
+        val repository = RoomTrackerRepository(dao = dao, clock = clock)
+        val tracker = trackerEntity(id = "delete-archived", kind = TrackerKind.STREAK)
+        dao.createTrackerAggregate(
+            tracker = tracker,
+            initialPeriod = periodEntity(
+                id = "delete-current",
+                eventId = tracker.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = EventGoalEntity(
+                eventId = tracker.id,
+                targetAmount = 21,
+                targetUnit = DisplayFormat.DAYS.name,
+                createdAtEpochMs = 10_000L,
+                updatedAtEpochMs = 10_000L,
+            ),
+        )
+
+        assertFalse(repository.deleteArchivedTracker(tracker.id))
+        assertNotNull(repository.loadTracker(tracker.id))
+
+        assertNotNull(repository.archiveTracker(tracker.id))
+        assertTrue(repository.deleteArchivedTracker(tracker.id))
+        assertNull(repository.loadTracker(tracker.id))
+        assertTrue(repository.observeActiveTrackerAggregates().first().isEmpty())
+        assertTrue(repository.observeArchivedTrackerAggregates().first().isEmpty())
+        assertTrue(dao.observeAllPeriods().first().isEmpty())
+        assertTrue(dao.observeAllGoals().first().isEmpty())
     }
 
     private suspend fun expectSQLiteFailure(

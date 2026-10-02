@@ -6,15 +6,70 @@ plugins {
     id("androidx.room3")
 }
 
+val explicitDevelopmentVersionCode =
+    providers.environmentVariable("GOREECLOUD_DEV_VERSION_CODE").orNull?.takeIf { it.isNotBlank() }
+val ciDevelopmentVersionCode =
+    providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.takeIf { it.isNotBlank() }
+
+fun positiveVersionCode(name: String, value: String): Int =
+    value.toIntOrNull()?.takeIf { it > 0 }
+        ?: throw org.gradle.api.GradleException("$name must be a positive Android versionCode.")
+
+val developmentVersionCode =
+    when {
+        explicitDevelopmentVersionCode != null ->
+            positiveVersionCode("GOREECLOUD_DEV_VERSION_CODE", explicitDevelopmentVersionCode)
+        ciDevelopmentVersionCode != null ->
+            positiveVersionCode("GITHUB_RUN_NUMBER", ciDevelopmentVersionCode)
+        else -> 1
+    }
+
+val developmentKeystorePath =
+    providers.environmentVariable("GOREECLOUD_DEV_KEYSTORE_PATH").orNull?.takeIf { it.isNotBlank() }
+val developmentKeystorePassword =
+    providers.environmentVariable("GOREECLOUD_DEV_KEYSTORE_PASSWORD").orNull?.takeIf { it.isNotBlank() }
+val developmentKeyAlias =
+    providers.environmentVariable("GOREECLOUD_DEV_KEY_ALIAS").orNull?.takeIf { it.isNotBlank() }
+val developmentKeyPassword =
+    providers.environmentVariable("GOREECLOUD_DEV_KEY_PASSWORD").orNull?.takeIf { it.isNotBlank() }
+
+val developmentSigningValues =
+    listOf(
+        developmentKeystorePath,
+        developmentKeystorePassword,
+        developmentKeyAlias,
+        developmentKeyPassword,
+    )
+val developmentSigningRequested = developmentSigningValues.any { it != null }
+val developmentSigningConfigured = developmentSigningValues.all { it != null }
+
+if (developmentSigningRequested && !developmentSigningConfigured) {
+    throw org.gradle.api.GradleException(
+        "Development signing configuration is incomplete. Provide all GOREECLOUD_DEV_KEYSTORE_* " +
+            "environment variables or none of them.",
+    )
+}
+
 android {
     namespace = "com.goreecloud.since"
     compileSdk = 36
+
+    signingConfigs {
+        if (developmentSigningConfigured) {
+            create("development") {
+                storeFile = file(requireNotNull(developmentKeystorePath))
+                storePassword = requireNotNull(developmentKeystorePassword)
+                keyAlias = requireNotNull(developmentKeyAlias)
+                keyPassword = requireNotNull(developmentKeyPassword)
+            }
+        }
+    }
 
     defaultConfig {
         applicationId = "com.goreecloud.since"
         minSdk = 29
         targetSdk = 36
-        versionCode = 1
+        versionCode = developmentVersionCode
         versionName = "0.1.0-dev"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -22,6 +77,9 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".dev"
+            if (developmentSigningConfigured) {
+                signingConfig = signingConfigs.getByName("development")
+            }
         }
         release {
             isMinifyEnabled = false

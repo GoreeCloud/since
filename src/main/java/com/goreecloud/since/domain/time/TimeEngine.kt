@@ -38,6 +38,43 @@ class TimeEngine(
         format = format,
     )
 
+    fun compareCalendarElapsed(
+        firstStart: Instant,
+        firstEnd: Instant,
+        firstZone: ZoneId,
+        secondStart: Instant,
+        secondEnd: Instant,
+        secondZone: ZoneId,
+    ): Int {
+        val first = elapsedBetween(
+            start = firstStart,
+            end = firstEnd,
+            zone = firstZone,
+            format = DisplayFormat.DAYS,
+        )
+        val second = elapsedBetween(
+            start = secondStart,
+            end = secondEnd,
+            zone = secondZone,
+            format = DisplayFormat.DAYS,
+        )
+
+        if (first is ElapsedResult.ClockInconsistency) {
+            return if (second is ElapsedResult.ClockInconsistency) 0 else -1
+        }
+        if (second is ElapsedResult.ClockInconsistency) return 1
+
+        first as ElapsedResult.Value
+        second as ElapsedResult.Value
+        val firstBreakdown = first.breakdown
+        val secondBreakdown = second.breakdown
+
+        firstBreakdown.days.compareTo(secondBreakdown.days).let { if (it != 0) return it }
+        firstBreakdown.hours.compareTo(secondBreakdown.hours).let { if (it != 0) return it }
+        firstBreakdown.minutes.compareTo(secondBreakdown.minutes).let { if (it != 0) return it }
+        return firstBreakdown.seconds.compareTo(secondBreakdown.seconds)
+    }
+
     fun elapsedBetween(
         start: Instant,
         end: Instant,

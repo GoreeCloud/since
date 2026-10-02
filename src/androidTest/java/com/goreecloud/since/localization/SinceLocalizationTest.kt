@@ -36,5 +36,29 @@ class SinceLocalizationTest {
         assertEquals("إضافة متتبّع", localizedContext.getString(R.string.add_tracker))
         assertEquals("حفظ", localizedContext.getString(R.string.save))
         assertEquals("حدث دائم", localizedContext.getString(R.string.tracker_kind_event))
+        assertEquals(
+            "تنسيق العرض الافتراضي",
+            localizedContext.getString(R.string.settings_default_display_format),
+        )
+        assertEquals(
+            "إظهار الثواني",
+            localizedContext.getString(R.string.settings_show_seconds),
+        )
+        assertEquals(
+            "تأكيد إعادة ضبط السلسلة",
+            localizedContext.getString(R.string.settings_confirm_reset),
+        )
+        assertEquals(
+            "1 يوم · 2 ساعة · 3 دقيقة · 4 ثانية",
+            localizedContext.getString(R.string.elapsed_days_detail_seconds, 1, 2, 3, 4),
+        )
+        assertEquals(
+            "تاريخ الإنشاء",
+            localizedContext.getString(R.string.dashboard_sort_manual),
+        )
+        assertEquals(
+            "الأطول حاليًا",
+            localizedContext.getString(R.string.dashboard_sort_longest_current),
+        )
     }
 }

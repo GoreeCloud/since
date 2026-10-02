@@ -1,16 +1,23 @@
 package com.goreecloud.since.ui
 
 import android.text.format.DateFormat
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -29,6 +36,7 @@ import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -49,6 +57,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -57,18 +66,28 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.goreecloud.since.R
+import com.goreecloud.since.data.preferences.DashboardSortPreference
 import com.goreecloud.since.data.preferences.ThemePreference
 import com.goreecloud.since.domain.model.DisplayFormat
 import com.goreecloud.since.domain.model.TrackerAggregate
 import com.goreecloud.since.domain.model.TrackerKind
+import com.goreecloud.since.domain.portability.SinceExportJson
+import com.goreecloud.since.domain.portability.SinceImportReviewJson
+import com.goreecloud.since.domain.portability.SinceImportReviewResult
 import com.goreecloud.since.domain.repository.TrackerRepository
 import com.goreecloud.since.domain.time.ElapsedResult
 import com.goreecloud.since.domain.time.GoalEstimateResult
@@ -86,9 +105,11 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun SinceApp(
@@ -96,12 +117,104 @@ fun SinceApp(
     clock: Clock,
     themePreference: ThemePreference = ThemePreference.SYSTEM,
     onThemePreferenceChange: (ThemePreference) -> Unit = {},
+    defaultDisplayFormat: DisplayFormat = DisplayFormat.DAYS,
+    onDefaultDisplayFormatChange: (DisplayFormat) -> Unit = {},
+    showSeconds: Boolean = true,
+    onShowSecondsChange: (Boolean) -> Unit = {},
+    dashboardSort: DashboardSortPreference = DashboardSortPreference.MANUAL,
+    onDashboardSortChange: (DashboardSortPreference) -> Unit = {},
+    confirmReset: Boolean = true,
+    onConfirmResetChange: (Boolean) -> Unit = {},
+    contextualHintsEnabled: Boolean = true,
+    onContextualHintsEnabledChange: (Boolean) -> Unit = {},
+    homeContextualHintDismissed: Boolean = false,
+    onHomeContextualHintDismissedChange: (Boolean) -> Unit = {},
+    onResetDismissedContextualHints: () -> Unit = {},
+    onReplaySetup: () -> Unit = {},
 ) {
     val aggregates by repository
         .observeActiveTrackerAggregates()
         .collectAsStateWithLifecycle(initialValue = emptyList())
+    val archivedAggregates by repository
+        .observeArchivedTrackerAggregates()
+        .collectAsStateWithLifecycle(initialValue = emptyList())
     val scope = rememberCoroutineScope()
     val validator = remember(clock) { TrackerDraftValidator(clock) }
+    val context = LocalContext.current
+    var isExportingData by remember { mutableStateOf(false) }
+    var exportStatus by remember { mutableStateOf<SinceExportStatus?>(null) }
+    var isReviewingImport by remember { mutableStateOf(false) }
+    var importReviewResult by remember { mutableStateOf<SinceImportReviewResult?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        if (uri == null) {
+            isExportingData = false
+        } else {
+            val exportedAtEpochMs = clock.millis()
+            val snapshot = aggregates + archivedAggregates
+            scope.launch {
+                val succeeded = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val payload = SinceExportJson.encode(
+                            aggregates = snapshot,
+                            exportedAtEpochMs = exportedAtEpochMs,
+                        )
+                        val output = context.contentResolver.openOutputStream(uri, "wt")
+                            ?: error("Selected export destination could not be opened")
+                        output.bufferedWriter(Charsets.UTF_8).use { writer ->
+                            writer.write(payload)
+                        }
+                    }.isSuccess
+                }
+                exportStatus = if (succeeded) {
+                    SinceExportStatus.SUCCESS
+                } else {
+                    SinceExportStatus.FAILURE
+                }
+                isExportingData = false
+            }
+        }
+    }
+
+    val importReviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri == null) {
+            isReviewingImport = false
+        } else {
+            scope.launch {
+                val review = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val input = context.contentResolver.openInputStream(uri)
+                            ?: error("Selected import file could not be opened")
+                        val payloadBytes = input.use { stream ->
+                            val output = java.io.ByteArrayOutputStream()
+                            val buffer = ByteArray(8 * 1024)
+                            var total = 0
+                            while (true) {
+                                val read = stream.read(buffer)
+                                if (read < 0) break
+                                total += read
+                                check(total <= SinceImportReviewJson.MAX_IMPORT_BYTES)
+                                output.write(buffer, 0, read)
+                            }
+                            output.toByteArray()
+                        }
+                        val decoder = Charsets.UTF_8.newDecoder()
+                            .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                            .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                        val payload = decoder
+                            .decode(java.nio.ByteBuffer.wrap(payloadBytes))
+                            .toString()
+                        SinceImportReviewJson.review(payload)
+                    }.getOrDefault(SinceImportReviewResult.Invalid)
+                }
+                importReviewResult = review
+                isReviewingImport = false
+            }
+        }
+    }
 
     var showTypeChooser by rememberSaveable { mutableStateOf(false) }
     var editorKindName by rememberSaveable { mutableStateOf<String?>(null) }
@@ -111,8 +224,17 @@ fun SinceApp(
     var saveFailed by rememberSaveable { mutableStateOf(false) }
     var detailUpdateFailed by rememberSaveable { mutableStateOf(false) }
     var goalUpdateFailed by rememberSaveable { mutableStateOf(false) }
+    var resetFailed by rememberSaveable { mutableStateOf(false) }
+    var archiveFailed by rememberSaveable { mutableStateOf(false) }
+    var restoreFailedTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteFailedTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var isGoalSaving by remember { mutableStateOf(false) }
+    var isResetting by remember { mutableStateOf(false) }
+    var isArchiving by remember { mutableStateOf(false) }
+    var restoringTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var deletingTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
+    var historyTrackerId by rememberSaveable { mutableStateOf<String?>(null) }
     var topLevelDestinationName by rememberSaveable {
         mutableStateOf(TopLevelDestination.HOME.name)
     }
@@ -126,6 +248,7 @@ fun SinceApp(
         CreateTrackerScreen(
             kind = editorKind,
             clock = clock,
+            initialDisplayFormat = defaultDisplayFormat,
             validationErrors = validationErrors,
             saveFailed = saveFailed,
             isSaving = isSaving,
@@ -169,6 +292,19 @@ fun SinceApp(
     }
     val editingAggregate = editingTrackerId?.let { trackerId ->
         aggregates.firstOrNull { it.tracker.id == trackerId }
+    }
+    val historyAggregate = historyTrackerId?.let { trackerId ->
+        aggregates.firstOrNull { it.tracker.id == trackerId }
+    }
+
+    if (historyAggregate != null && historyAggregate.tracker.kind == TrackerKind.STREAK) {
+        StreakHistoryScreen(
+            aggregate = historyAggregate,
+            clock = clock,
+            showSeconds = showSeconds,
+            onBack = { historyTrackerId = null },
+        )
+        return
     }
 
     if (editingAggregate != null) {
@@ -234,19 +370,68 @@ fun SinceApp(
         TrackerDetailsScreen(
             aggregate = selectedAggregate,
             clock = clock,
+            showSeconds = showSeconds,
+            confirmReset = confirmReset,
             updateFailed = detailUpdateFailed,
             goalUpdateFailed = goalUpdateFailed,
+            resetFailed = resetFailed,
+            archiveFailed = archiveFailed,
             isGoalSaving = isGoalSaving,
+            isResetting = isResetting,
+            isArchiving = isArchiving,
             onBack = {
                 selectedTrackerId = null
                 editingTrackerId = null
+                historyTrackerId = null
                 detailUpdateFailed = false
                 goalUpdateFailed = false
+                resetFailed = false
+                archiveFailed = false
             },
             onEdit = {
                 validationErrors = emptyList()
                 saveFailed = false
                 editingTrackerId = selectedAggregate.tracker.id
+            },
+            onOpenHistory = {
+                historyTrackerId = selectedAggregate.tracker.id
+            },
+            onArchive = {
+                archiveFailed = false
+                isArchiving = true
+                scope.launch {
+                    val archived = runCatching {
+                        repository.archiveTracker(selectedAggregate.tracker.id)
+                    }.getOrNull()
+                    if (archived == null) {
+                        archiveFailed = true
+                    } else {
+                        selectedTrackerId = null
+                        editingTrackerId = null
+                        historyTrackerId = null
+                        detailUpdateFailed = false
+                        goalUpdateFailed = false
+                        resetFailed = false
+                    }
+                    isArchiving = false
+                }
+            },
+            onResetStreak = { resetEpochMs, resetZoneId, reason, note ->
+                resetFailed = false
+                isResetting = true
+                scope.launch {
+                    val updated = runCatching {
+                        repository.resetStreak(
+                            trackerId = selectedAggregate.tracker.id,
+                            resetEpochMs = resetEpochMs,
+                            resetZoneId = resetZoneId,
+                            reason = reason,
+                            note = note,
+                        )
+                    }.getOrNull()
+                    resetFailed = updated == null
+                    isResetting = false
+                }
             },
             onDisplayFormatChange = { format ->
                 if (format != selectedAggregate.tracker.defaultDisplayFormat) {
@@ -318,7 +503,20 @@ fun SinceApp(
                     shape = MaterialTheme.shapes.large,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
-                    content = { Text(stringResource(R.string.add_tracker)) },
+                    content = {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                modifier = Modifier.clearAndSetSemantics {},
+                                text = "+",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(stringResource(R.string.add_tracker))
+                        }
+                    },
                 )
             }
         },
@@ -328,10 +526,19 @@ fun SinceApp(
                 innerPadding = innerPadding,
                 aggregates = aggregates,
                 clock = clock,
+                showSeconds = showSeconds,
+                dashboardSort = dashboardSort,
+                onDashboardSortChange = onDashboardSortChange,
+                contextualHintsEnabled = contextualHintsEnabled,
+                homeContextualHintDismissed = homeContextualHintDismissed,
+                onDismissHomeContextualHint = {
+                    onHomeContextualHintDismissedChange(true)
+                },
                 onAddTracker = onAddTracker,
                 onOpenTracker = { trackerId ->
                     detailUpdateFailed = false
                     goalUpdateFailed = false
+                    archiveFailed = false
                     selectedTrackerId = trackerId
                 },
             )
@@ -346,6 +553,83 @@ fun SinceApp(
                 innerPadding = innerPadding,
                 themePreference = themePreference,
                 onThemePreferenceChange = onThemePreferenceChange,
+                defaultDisplayFormat = defaultDisplayFormat,
+                onDefaultDisplayFormatChange = onDefaultDisplayFormatChange,
+                showSeconds = showSeconds,
+                onShowSecondsChange = onShowSecondsChange,
+                dashboardSort = dashboardSort,
+                onDashboardSortChange = onDashboardSortChange,
+                confirmReset = confirmReset,
+                onConfirmResetChange = onConfirmResetChange,
+                archivedTrackers = archivedAggregates,
+                restoringTrackerId = restoringTrackerId,
+                restoreFailedTrackerId = restoreFailedTrackerId,
+                deletingTrackerId = deletingTrackerId,
+                deleteFailedTrackerId = deleteFailedTrackerId,
+                onRestoreTracker = { trackerId ->
+                    restoreFailedTrackerId = null
+                    deleteFailedTrackerId = null
+                    restoringTrackerId = trackerId
+                    scope.launch {
+                        val restored = runCatching {
+                            repository.restoreTracker(trackerId)
+                        }.getOrNull()
+                        if (restored == null) {
+                            restoreFailedTrackerId = trackerId
+                        }
+                        restoringTrackerId = null
+                    }
+                },
+                onDeleteArchivedTracker = { trackerId ->
+                    restoreFailedTrackerId = null
+                    deleteFailedTrackerId = null
+                    deletingTrackerId = trackerId
+                    scope.launch {
+                        val deleted = runCatching {
+                            repository.deleteArchivedTracker(trackerId)
+                        }.getOrDefault(false)
+                        if (!deleted) {
+                            deleteFailedTrackerId = trackerId
+                        }
+                        deletingTrackerId = null
+                    }
+                },
+                isExportingData = isExportingData,
+                exportStatus = exportStatus,
+                onExportData = {
+                    if (!isExportingData && !isReviewingImport) {
+                        exportStatus = null
+                        isExportingData = true
+                        runCatching {
+                            exportLauncher.launch(SinceExportJson.fileName(clock.millis()))
+                        }.onFailure {
+                            isExportingData = false
+                            exportStatus = SinceExportStatus.FAILURE
+                        }
+                    }
+                },
+                isReviewingImport = isReviewingImport,
+                importReviewResult = importReviewResult,
+                currentTrackerIds = (aggregates + archivedAggregates)
+                    .mapTo(linkedSetOf()) { it.tracker.id },
+                onReviewImport = {
+                    if (!isReviewingImport && !isExportingData) {
+                        importReviewResult = null
+                        isReviewingImport = true
+                        runCatching {
+                            importReviewLauncher.launch(
+                                arrayOf("application/json", "text/json", "text/plain"),
+                            )
+                        }.onFailure {
+                            isReviewingImport = false
+                            importReviewResult = SinceImportReviewResult.Invalid
+                        }
+                    }
+                },
+                contextualHintsEnabled = contextualHintsEnabled,
+                onContextualHintsEnabledChange = onContextualHintsEnabledChange,
+                onResetDismissedContextualHints = onResetDismissedContextualHints,
+                onReplaySetup = onReplaySetup,
             )
         }
     }
@@ -368,43 +652,50 @@ private fun Dashboard(
     innerPadding: PaddingValues,
     aggregates: List<TrackerAggregate>,
     clock: Clock,
+    showSeconds: Boolean,
+    dashboardSort: DashboardSortPreference,
+    onDashboardSortChange: (DashboardSortPreference) -> Unit,
+    contextualHintsEnabled: Boolean,
+    homeContextualHintDismissed: Boolean,
+    onDismissHomeContextualHint: () -> Unit,
     onAddTracker: () -> Unit,
     onOpenTracker: (String) -> Unit,
 ) {
-    val dashboardTick by rememberMinuteTick(
+    val dashboardTick by rememberElapsedTick(
         clock = clock,
         key = "dashboard",
+        showSeconds = showSeconds,
     )
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    val visibleAggregates = remember(aggregates, searchQuery, dashboardSort) {
+        SinceDashboardQuery.apply(
+            aggregates = aggregates,
+            query = searchQuery,
+            sort = dashboardSort,
+        )
+    }
+    val summary = remember(aggregates, dashboardTick, clock) {
+        calculateDashboardSummary(
+            aggregates = aggregates,
+            clock = clock,
+        )
+    }
 
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(innerPadding),
+            .padding(innerPadding)
+            .testTag("dashboard-list"),
         contentPadding = PaddingValues(
             start = 20.dp,
-            top = 24.dp,
+            top = 18.dp,
             end = 20.dp,
-            bottom = if (aggregates.isEmpty()) 32.dp else 112.dp,
+            bottom = if (aggregates.isEmpty()) 32.dp else 116.dp,
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    modifier = Modifier.semantics { heading() },
-                    text = stringResource(R.string.dashboard_title),
-                    style = MaterialTheme.typography.displaySmall,
-                )
-                if (aggregates.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.dashboard_empty_message),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                }
-            }
+            DashboardHeroHeader()
         }
 
         if (aggregates.isEmpty()) {
@@ -412,17 +703,430 @@ private fun Dashboard(
                 DashboardEmptyState(onAddTracker = onAddTracker)
             }
         } else {
+            item {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    OutlinedTextField(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("dashboard-search"),
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text(stringResource(R.string.dashboard_search)) },
+                        leadingIcon = { DashboardSearchGlyph() },
+                        singleLine = true,
+                        shape = MaterialTheme.shapes.large,
+                    )
+                    DashboardSortControls(
+                        selected = dashboardSort,
+                        onSelect = onDashboardSortChange,
+                    )
+                    if (visibleAggregates.isEmpty()) {
+                        Text(
+                            modifier = Modifier.testTag("dashboard-no-matches"),
+                            text = stringResource(R.string.dashboard_no_matches),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                }
+            }
+
+            item {
+                DashboardSummaryRow(summary = summary)
+            }
+
             items(
-                items = aggregates,
+                items = visibleAggregates,
                 key = { it.tracker.id },
             ) { aggregate ->
                 TrackerCard(
                     aggregate = aggregate,
                     clock = clock,
                     tick = dashboardTick,
+                    showSeconds = showSeconds,
                     onClick = { onOpenTracker(aggregate.tracker.id) },
                 )
             }
+
+            if (contextualHintsEnabled && !homeContextualHintDismissed) {
+                item {
+                    DashboardContextualHint(
+                        onDismiss = onDismissHomeContextualHint,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardContextualHint(
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("home-contextual-hint"),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f),
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                start = 16.dp,
+                top = 10.dp,
+                end = 12.dp,
+                bottom = 10.dp,
+            ),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                modifier = Modifier.weight(1f),
+                text = stringResource(R.string.home_contextual_hint),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(
+                modifier = Modifier.testTag("home-contextual-hint-dismiss"),
+                onClick = onDismiss,
+            ) {
+                Text(stringResource(R.string.dismiss_hint))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardHeroHeader() {
+    val fontScale = LocalDensity.current.fontScale
+    val largeText = fontScale >= 1.5f
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(132.dp),
+    ) {
+        if (!largeText) {
+            DashboardLandscape(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(width = 190.dp, height = 112.dp),
+            )
+        }
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(if (largeText) 1f else 0.79f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                modifier = Modifier.semantics { heading() },
+                text = stringResource(R.string.dashboard_title),
+                color = MaterialTheme.colorScheme.onBackground,
+                style = if (largeText) {
+                    MaterialTheme.typography.headlineLarge
+                } else {
+                    MaterialTheme.typography.displayLarge
+                },
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = stringResource(R.string.dashboard_empty_message),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DashboardLandscape(
+    modifier: Modifier = Modifier,
+) {
+    val backMountain = MaterialTheme.colorScheme.secondaryContainer
+    val frontMountain = MaterialTheme.colorScheme.primaryContainer
+    val lowHill = MaterialTheme.colorScheme.surfaceContainerHigh
+    val sun = MaterialTheme.colorScheme.tertiaryContainer
+    val tree = MaterialTheme.colorScheme.primary
+
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+
+        drawCircle(
+            color = sun.copy(alpha = 0.56f),
+            radius = width * 0.12f,
+            center = Offset(width * 0.80f, height * 0.19f),
+        )
+
+        val rear = Path().apply {
+            moveTo(width * 0.12f, height * 0.76f)
+            lineTo(width * 0.42f, height * 0.32f)
+            lineTo(width * 0.60f, height * 0.58f)
+            lineTo(width * 0.74f, height * 0.43f)
+            lineTo(width, height * 0.72f)
+            lineTo(width, height)
+            lineTo(width * 0.12f, height)
+            close()
+        }
+        drawPath(rear, backMountain.copy(alpha = 0.82f))
+
+        val front = Path().apply {
+            moveTo(0f, height * 0.82f)
+            lineTo(width * 0.28f, height * 0.56f)
+            lineTo(width * 0.50f, height * 0.75f)
+            lineTo(width * 0.72f, height * 0.61f)
+            lineTo(width, height * 0.82f)
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(front, frontMountain.copy(alpha = 0.92f))
+
+        val foreground = Path().apply {
+            moveTo(0f, height * 0.93f)
+            cubicTo(
+                width * 0.24f,
+                height * 0.78f,
+                width * 0.56f,
+                height * 0.82f,
+                width,
+                height * 0.95f,
+            )
+            lineTo(width, height)
+            lineTo(0f, height)
+            close()
+        }
+        drawPath(foreground, lowHill)
+
+        fun drawPine(centerX: Float, baseY: Float, scale: Float) {
+            val pine = Path().apply {
+                moveTo(centerX, baseY - 38f * scale)
+                lineTo(centerX - 11f * scale, baseY - 13f * scale)
+                lineTo(centerX - 4f * scale, baseY - 13f * scale)
+                lineTo(centerX - 14f * scale, baseY + 7f * scale)
+                lineTo(centerX + 14f * scale, baseY + 7f * scale)
+                lineTo(centerX + 4f * scale, baseY - 13f * scale)
+                lineTo(centerX + 11f * scale, baseY - 13f * scale)
+                close()
+            }
+            drawPath(pine, tree.copy(alpha = 0.84f))
+            drawLine(
+                color = tree,
+                start = Offset(centerX, baseY + 5f * scale),
+                end = Offset(centerX, baseY + 16f * scale),
+                strokeWidth = 2.2f * scale,
+                cap = StrokeCap.Round,
+            )
+        }
+
+        drawPine(width * 0.70f, height * 0.78f, 0.78f)
+        drawPine(width * 0.83f, height * 0.72f, 0.95f)
+        drawPine(width * 0.91f, height * 0.80f, 0.66f)
+    }
+}
+
+@Composable
+private fun DashboardSearchGlyph() {
+    val color = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(modifier = Modifier.size(24.dp)) {
+        val strokeWidth = 2.2.dp.toPx()
+        val center = Offset(size.width * 0.42f, size.height * 0.42f)
+        val radius = size.minDimension * 0.27f
+        drawCircle(
+            color = color,
+            radius = radius,
+            center = center,
+            style = Stroke(width = strokeWidth),
+        )
+        drawLine(
+            color = color,
+            start = Offset(center.x + radius * 0.72f, center.y + radius * 0.72f),
+            end = Offset(size.width * 0.82f, size.height * 0.82f),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+internal fun DashboardSortControls(
+    selected: DashboardSortPreference,
+    onSelect: (DashboardSortPreference) -> Unit,
+) {
+    val options = listOf(
+        DashboardSortPreference.MANUAL to R.string.dashboard_sort_manual,
+        DashboardSortPreference.TITLE to R.string.dashboard_sort_name,
+        DashboardSortPreference.NEWEST_START to R.string.dashboard_sort_newest_start,
+        DashboardSortPreference.OLDEST_START to R.string.dashboard_sort_oldest_start,
+        DashboardSortPreference.LONGEST_CURRENT to R.string.dashboard_sort_longest_current,
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .testTag("dashboard-sort-row"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (preference, labelRes) ->
+            FilterChip(
+                modifier = Modifier
+                    .heightIn(min = 46.dp)
+                    .testTag("dashboard-sort-" + preference.name.lowercase()),
+                selected = selected == preference,
+                onClick = { onSelect(preference) },
+                shape = MaterialTheme.shapes.large,
+                label = {
+                    Text(
+                        text = stringResource(labelRes),
+                        textAlign = TextAlign.Center,
+                        fontWeight = if (selected == preference) {
+                            FontWeight.SemiBold
+                        } else {
+                            FontWeight.Normal
+                        },
+                    )
+                },
+            )
+        }
+    }
+}
+
+private data class DashboardSummaryUi(
+    val totalTrackers: Int,
+    val activeStreaks: Int,
+    val longestStreakDays: Long,
+)
+
+private fun calculateDashboardSummary(
+    aggregates: List<TrackerAggregate>,
+    clock: Clock,
+): DashboardSummaryUi {
+    val streaks = aggregates.filter { it.tracker.kind == TrackerKind.STREAK }
+    val engine = TimeEngine(clock)
+    val now = clock.instant()
+    val longestDays = streaks
+        .flatMap { it.periods }
+        .mapNotNull { period ->
+            val end = period.endEpochMs?.let(Instant::ofEpochMilli) ?: now
+            when (
+                val elapsed = engine.elapsedBetween(
+                    start = Instant.ofEpochMilli(period.startEpochMs),
+                    end = end,
+                    zone = ZoneId.of(period.startZoneId),
+                    format = DisplayFormat.DAYS,
+                )
+            ) {
+                ElapsedResult.ClockInconsistency -> null
+                is ElapsedResult.Value -> elapsed.breakdown.days
+            }
+        }
+        .maxOrNull()
+        ?: 0L
+
+    return DashboardSummaryUi(
+        totalTrackers = aggregates.size,
+        activeStreaks = streaks.size,
+        longestStreakDays = longestDays,
+    )
+}
+
+@Composable
+private fun DashboardSummaryRow(
+    summary: DashboardSummaryUi,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("dashboard-summary"),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DashboardStatCard(
+            modifier = Modifier
+                .weight(1f)
+                .testTag("dashboard-summary-total"),
+            glyph = "▦",
+            label = stringResource(R.string.dashboard_total_trackers),
+            value = summary.totalTrackers.toString(),
+        )
+        DashboardStatCard(
+            modifier = Modifier
+                .weight(1f)
+                .testTag("dashboard-summary-streaks"),
+            glyph = "◆",
+            label = stringResource(R.string.dashboard_active_streaks),
+            value = summary.activeStreaks.toString(),
+        )
+        DashboardStatCard(
+            modifier = Modifier
+                .weight(1f)
+                .testTag("dashboard-summary-longest"),
+            glyph = "★",
+            label = stringResource(R.string.dashboard_longest_streak),
+            value = stringResource(
+                R.string.dashboard_days_value,
+                summary.longestStreakDays,
+            ),
+            emphasized = true,
+        )
+    }
+}
+
+@Composable
+private fun DashboardStatCard(
+    modifier: Modifier,
+    glyph: String,
+    label: String,
+    value: String,
+    emphasized: Boolean = false,
+) {
+    Surface(
+        modifier = modifier.heightIn(min = 92.dp),
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(34.dp),
+                shape = MaterialTheme.shapes.small,
+                color = if (emphasized) {
+                    MaterialTheme.colorScheme.tertiaryContainer
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
+                contentColor = if (emphasized) {
+                    MaterialTheme.colorScheme.onTertiaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                },
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        modifier = Modifier.clearAndSetSemantics {},
+                        text = glyph,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelSmall,
+            )
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.onSurface,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
         }
     }
 }
@@ -435,9 +1139,9 @@ private fun DashboardEmptyState(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp),
@@ -446,8 +1150,8 @@ private fun DashboardEmptyState(
             Surface(
                 modifier = Modifier.size(64.dp),
                 shape = MaterialTheme.shapes.large,
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_launcher_foreground),
@@ -459,6 +1163,7 @@ private fun DashboardEmptyState(
                 text = stringResource(R.string.dashboard_empty_status),
                 color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = stringResource(R.string.dashboard_empty_message),
@@ -481,9 +1186,12 @@ private fun TrackerCard(
     aggregate: TrackerAggregate,
     clock: Clock,
     tick: Long,
+    showSeconds: Boolean,
     onClick: () -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
+    val compactWidth = LocalConfiguration.current.screenWidthDp < 360
+    val floatingActionSafeEnd = if (compactWidth) 92.dp else 0.dp
     val elapsed = remember(aggregate, tick, clock) {
         TimeEngine(clock).elapsedSince(
             startEpochMs = currentPeriod.startEpochMs,
@@ -491,6 +1199,22 @@ private fun TrackerCard(
             format = aggregate.tracker.defaultDisplayFormat,
         )
     }
+    val startedText = remember(currentPeriod.startEpochMs, currentPeriod.startZoneId) {
+        DateTimeFormatter
+            .ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
+            .format(
+                Instant
+                    .ofEpochMilli(currentPeriod.startEpochMs)
+                    .atZone(ZoneId.of(currentPeriod.startZoneId))
+            )
+    }
+    val tip = stringResource(
+        if (aggregate.tracker.kind == TrackerKind.STREAK) {
+            R.string.dashboard_tip_streak
+        } else {
+            R.string.dashboard_tip_event
+        }
+    )
 
     Card(
         modifier = Modifier
@@ -498,48 +1222,111 @@ private fun TrackerCard(
             .semantics(mergeDescendants = true) {},
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         onClick = onClick,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = floatingActionSafeEnd),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
+                if (!compactWidth) {
+                    Surface(
+                        modifier = Modifier.size(58.dp),
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                modifier = Modifier.clearAndSetSemantics {},
+                                text = if (aggregate.tracker.kind == TrackerKind.STREAK) "↟" else "◇",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+
+                Column(
                     modifier = Modifier.weight(1f),
-                    text = aggregate.tracker.title,
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
                     Text(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        text = trackerKindLabel(aggregate.tracker.kind),
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        style = MaterialTheme.typography.labelMedium,
+                        text = aggregate.tracker.title,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
                     )
+                    Text(
+                        text = stringResource(
+                            R.string.dashboard_started,
+                            startedText,
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    if (compactWidth) {
+                        Text(
+                            text = trackerKindLabel(aggregate.tracker.kind),
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+
+                if (!compactWidth) {
+                    Surface(
+                        shape = MaterialTheme.shapes.large,
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Text(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            text = trackerKindLabel(aggregate.tracker.kind),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
                 }
             }
 
-            Text(
-                text = stringResource(R.string.elapsed_label),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
-            Text(
-                text = elapsedSummary(elapsed),
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.headlineSmall,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.elapsed_label),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        text = elapsedSummary(elapsed, showSeconds),
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Text(
+                    modifier = Modifier.clearAndSetSemantics {},
+                    text = "›",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.displaySmall,
+                )
+            }
 
             aggregate.goal?.let { goal ->
                 val estimate = remember(aggregate, tick, clock) {
@@ -551,12 +1338,13 @@ private fun TrackerCard(
                     )
                 }
                 Surface(
-                    shape = MaterialTheme.shapes.small,
-                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.72f),
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp),
                     ) {
                         Text(
                             text = stringResource(
@@ -593,27 +1381,62 @@ private fun TrackerCard(
                     }
                 }
             }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        modifier = Modifier.clearAndSetSemantics {},
+                        text = "✦",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = tip,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
     }
 }
+
 
 @Composable
 private fun TrackerDetailsScreen(
     aggregate: TrackerAggregate,
     clock: Clock,
+    showSeconds: Boolean,
+    confirmReset: Boolean,
     updateFailed: Boolean,
     goalUpdateFailed: Boolean,
+    resetFailed: Boolean,
+    archiveFailed: Boolean,
     isGoalSaving: Boolean,
+    isResetting: Boolean,
+    isArchiving: Boolean,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onArchive: () -> Unit,
+    onResetStreak: (Long, String, String?, String?) -> Unit,
     onDisplayFormatChange: (DisplayFormat) -> Unit,
     onUpdateGoal: (Int, DisplayFormat) -> Unit,
     onRemoveGoal: () -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
-    val tick by rememberMinuteTick(
+    val tick by rememberElapsedTick(
         clock = clock,
         key = "details-" + aggregate.tracker.id,
+        showSeconds = showSeconds,
     )
     val elapsed = remember(aggregate, tick, clock) {
         TimeEngine(clock).elapsedSince(
@@ -629,6 +1452,52 @@ private fun TrackerDetailsScreen(
     }
 
     var showGoalEditor by rememberSaveable(aggregate.tracker.id) { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable(aggregate.tracker.id) { mutableStateOf(false) }
+    var showArchiveDialog by rememberSaveable(aggregate.tracker.id) { mutableStateOf(false) }
+    val closedPeriods = remember(aggregate.periods) {
+        aggregate.periods.filter { it.endEpochMs != null }
+    }
+    val longestPeriod = remember(aggregate.periods, tick, clock) {
+        val nowEpochMs = clock.millis()
+        val timeEngine = TimeEngine(clock)
+        aggregate.periods.maxWithOrNull(
+            Comparator { first, second ->
+                timeEngine.compareCalendarElapsed(
+                    firstStart = Instant.ofEpochMilli(first.startEpochMs),
+                    firstEnd = Instant.ofEpochMilli(first.endEpochMs ?: nowEpochMs),
+                    firstZone = ZoneId.of(first.startZoneId),
+                    secondStart = Instant.ofEpochMilli(second.startEpochMs),
+                    secondEnd = Instant.ofEpochMilli(second.endEpochMs ?: nowEpochMs),
+                    secondZone = ZoneId.of(second.startZoneId),
+                )
+            }
+        )
+    }
+    val longestElapsed = longestPeriod?.let { period ->
+        remember(period, aggregate.tracker.defaultDisplayFormat, tick, clock) {
+            TimeEngine(clock).elapsedBetween(
+                start = Instant.ofEpochMilli(period.startEpochMs),
+                end = Instant.ofEpochMilli(period.endEpochMs ?: clock.millis()),
+                zone = ZoneId.of(period.startZoneId),
+                format = aggregate.tracker.defaultDisplayFormat,
+            )
+        }
+    }
+    val lastResetText = remember(closedPeriods) {
+        closedPeriods
+            .maxByOrNull { it.endEpochMs ?: Long.MIN_VALUE }
+            ?.let { period ->
+                val endEpochMs = checkNotNull(period.endEpochMs)
+                val endZoneId = period.endZoneId ?: period.startZoneId
+                DateTimeFormatter
+                    .ofLocalizedDateTime(FormatStyle.MEDIUM)
+                    .format(
+                        Instant
+                            .ofEpochMilli(endEpochMs)
+                            .atZone(ZoneId.of(endZoneId))
+                    )
+            }
+    }
     val goalEstimate = aggregate.goal?.let { goal ->
         remember(aggregate, tick, clock) {
             GoalEstimator(clock).estimate(
@@ -642,15 +1511,58 @@ private fun TrackerDetailsScreen(
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            if (aggregate.tracker.kind == TrackerKind.STREAK) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding(),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 3.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(
+                            start = 16.dp,
+                            top = 8.dp,
+                            end = 16.dp,
+                            bottom = 8.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        if (resetFailed) {
+                            Text(
+                                modifier = Modifier.semantics {
+                                    liveRegion = LiveRegionMode.Assertive
+                                },
+                                text = stringResource(R.string.reset_failed),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                        StreakDetailActionButtons(
+                            stacked = LocalDensity.current.fontScale >= 1.5f,
+                            isResetting = isResetting,
+                            onOpenHistory = onOpenHistory,
+                            onReset = { showResetDialog = true },
+                        )
+                    }
+                }
+            }
+        },
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(innerPadding),
         ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -700,7 +1612,7 @@ private fun TrackerDetailsScreen(
                     )
                     SelectionContainer {
                         Text(
-                            text = elapsedSummary(elapsed),
+                            text = elapsedSummary(elapsed, showSeconds),
                             color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.displaySmall,
                         )
@@ -856,6 +1768,78 @@ private fun TrackerDetailsScreen(
                 }
             }
 
+            if (aggregate.tracker.kind == TrackerKind.STREAK) {
+                SectionCard {
+                    Text(
+                        text = stringResource(R.string.statistics_label),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    DetailValueRow(
+                        label = stringResource(R.string.current_streak_label),
+                        value = elapsedSummary(elapsed, showSeconds),
+                    )
+                    DetailValueRow(
+                        label = stringResource(R.string.longest_streak_label),
+                        value = longestElapsed?.let { elapsedSummary(it, showSeconds) }
+                            ?: stringResource(R.string.no_history_value),
+                    )
+                    DetailValueRow(
+                        label = stringResource(R.string.reset_count_label),
+                        value = closedPeriods.size.toString(),
+                    )
+                    if (lastResetText != null) {
+                        DetailValueRow(
+                            label = stringResource(R.string.last_reset_label),
+                            value = lastResetText,
+                        )
+                    }
+                }
+
+                SectionCard {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.history_label),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = stringResource(
+                                    if (closedPeriods.size == 1) {
+                                        R.string.history_summary_one
+                                    } else {
+                                        R.string.history_summary_other
+                                    },
+                                    closedPeriods.size,
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+
+                    }
+                }
+
+                SectionCard {
+                    Text(
+                        text = stringResource(R.string.reset_streak_title),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = stringResource(R.string.reset_streak_supporting),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+
+                }
+            }
+
             SectionCard {
                 Text(
                     text = stringResource(R.string.note_label),
@@ -867,7 +1851,83 @@ private fun TrackerDetailsScreen(
                     style = MaterialTheme.typography.bodyLarge,
                 )
             }
+
+            SectionCard {
+                Text(
+                    text = stringResource(R.string.archive_tracker),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = stringResource(R.string.archive_tracker_supporting),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                TextButton(
+                    modifier = Modifier.testTag("archive-tracker"),
+                    onClick = { showArchiveDialog = true },
+                    enabled = !isArchiving,
+                ) {
+                    Text(stringResource(R.string.archive))
+                }
+                if (archiveFailed) {
+                    Text(
+                        modifier = Modifier.semantics {
+                            liveRegion = LiveRegionMode.Assertive
+                        },
+                        text = stringResource(R.string.archive_failed),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                }
+            }
         }
+
+
+        }
+    }
+
+    if (showArchiveDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!isArchiving) showArchiveDialog = false
+            },
+            title = { Text(stringResource(R.string.archive_tracker_title)) },
+            text = { Text(stringResource(R.string.archive_tracker_message)) },
+            confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag("confirm-archive-tracker"),
+                    onClick = {
+                        showArchiveDialog = false
+                        onArchive()
+                    },
+                    enabled = !isArchiving,
+                ) {
+                    Text(stringResource(R.string.archive))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showArchiveDialog = false },
+                    enabled = !isArchiving,
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
+
+    if (showResetDialog && aggregate.tracker.kind == TrackerKind.STREAK) {
+        ResetStreakDialog(
+            currentPeriod = currentPeriod,
+            clock = clock,
+            isSaving = isResetting,
+            confirmReset = confirmReset,
+            onDismiss = { showResetDialog = false },
+            onConfirm = { resetEpochMs, resetZoneId, reason, note ->
+                onResetStreak(resetEpochMs, resetZoneId, reason, note)
+                showResetDialog = false
+            },
+        )
     }
 
     if (showGoalEditor && aggregate.tracker.kind == TrackerKind.STREAK) {
@@ -891,6 +1951,456 @@ private fun TrackerDetailsScreen(
             },
         )
     }
+}
+
+@Composable
+private fun DetailValueRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            modifier = Modifier.weight(1f),
+            text = label,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        Text(
+            modifier = Modifier.weight(1f),
+            text = value,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.End,
+        )
+    }
+}
+
+@Composable
+private fun StreakHistoryScreen(
+    aggregate: TrackerAggregate,
+    clock: Clock,
+    showSeconds: Boolean,
+    onBack: () -> Unit,
+) {
+    val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
+    val orderedPeriods = remember(aggregate.periods) {
+        listOf(currentPeriod) +
+            aggregate.periods
+                .filter { it.endEpochMs != null }
+                .sortedByDescending { it.sequence }
+    }
+    val tick by rememberElapsedTick(
+        clock = clock,
+        key = "history-" + aggregate.tracker.id,
+        showSeconds = showSeconds,
+    )
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+    ) { innerPadding ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .testTag("history-screen"),
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = 16.dp,
+                end = 20.dp,
+                bottom = 32.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            item {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = onBack) {
+                        Text(stringResource(R.string.back))
+                    }
+                    Text(
+                        modifier = Modifier.semantics { heading() },
+                        text = stringResource(R.string.history_title, aggregate.tracker.title),
+                        style = MaterialTheme.typography.headlineMedium,
+                    )
+                    Text(
+                        text = stringResource(
+                            if (orderedPeriods.count { it.endEpochMs != null } == 1) {
+                                R.string.history_completed_count_one
+                            } else {
+                                R.string.history_completed_count_other
+                            },
+                            orderedPeriods.count { it.endEpochMs != null },
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                }
+            }
+
+            items(
+                items = orderedPeriods,
+                key = { it.id },
+            ) { period ->
+                val isCurrent = period.endEpochMs == null
+                val endEpochMs = period.endEpochMs ?: tick
+                val duration = remember(
+                    period,
+                    endEpochMs,
+                    aggregate.tracker.defaultDisplayFormat,
+                    clock,
+                ) {
+                    TimeEngine(clock).elapsedBetween(
+                        start = Instant.ofEpochMilli(period.startEpochMs),
+                        end = Instant.ofEpochMilli(endEpochMs),
+                        zone = ZoneId.of(period.startZoneId),
+                        format = aggregate.tracker.defaultDisplayFormat,
+                    )
+                }
+                val startText = remember(period.startEpochMs, period.startZoneId) {
+                    DateTimeFormatter
+                        .ofLocalizedDateTime(FormatStyle.MEDIUM)
+                        .format(
+                            Instant
+                                .ofEpochMilli(period.startEpochMs)
+                                .atZone(ZoneId.of(period.startZoneId))
+                        )
+                }
+                val endText = period.endEpochMs?.let { completedAt ->
+                    val zoneId = period.endZoneId ?: period.startZoneId
+                    remember(completedAt, zoneId) {
+                        DateTimeFormatter
+                            .ofLocalizedDateTime(FormatStyle.MEDIUM)
+                            .format(
+                                Instant
+                                    .ofEpochMilli(completedAt)
+                                    .atZone(ZoneId.of(zoneId))
+                            )
+                    }
+                }
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = MaterialTheme.shapes.large,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Surface(
+                            shape = MaterialTheme.shapes.small,
+                            color = if (isCurrent) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                        ) {
+                            Text(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                text = if (isCurrent) {
+                                    stringResource(R.string.history_current)
+                                } else {
+                                    stringResource(
+                                        R.string.history_period_number,
+                                        period.sequence + 1,
+                                    )
+                                },
+                                color = if (isCurrent) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        }
+
+                        DetailValueRow(
+                            label = stringResource(R.string.history_started),
+                            value = startText,
+                        )
+                        if (endText != null) {
+                            DetailValueRow(
+                                label = stringResource(R.string.history_ended),
+                                value = endText,
+                            )
+                        }
+                        DetailValueRow(
+                            label = stringResource(R.string.history_duration),
+                            value = elapsedSummary(duration, showSeconds),
+                        )
+                        period.resetReason?.let { reason ->
+                            DetailValueRow(
+                                label = stringResource(R.string.reset_reason_label),
+                                value = reason,
+                            )
+                        }
+                        if (period.resetNote != null) {
+                            DetailValueRow(
+                                label = stringResource(R.string.reset_note_label),
+                                value = stringResource(R.string.reset_note_saved),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private data class PendingResetRequest(
+    val epochMs: Long,
+    val zoneId: String,
+    val reason: String?,
+    val note: String?,
+)
+
+@Composable
+private fun ResetStreakDialog(
+    currentPeriod: com.goreecloud.since.domain.model.TrackerPeriod,
+    clock: Clock,
+    isSaving: Boolean,
+    confirmReset: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (Long, String, String?, String?) -> Unit,
+) {
+    val defaultZoneId = ZoneId.systemDefault().id
+    var resetDateTime by rememberSaveable(currentPeriod.id) {
+        mutableStateOf(TrackerStartInput.format(clock.millis(), defaultZoneId))
+    }
+    var resetZoneId by rememberSaveable(currentPeriod.id) {
+        mutableStateOf(defaultZoneId)
+    }
+    var reason by rememberSaveable(currentPeriod.id) { mutableStateOf("") }
+    var note by rememberSaveable(currentPeriod.id) { mutableStateOf("") }
+    var inputErrors by remember { mutableStateOf(emptyList<String>()) }
+
+    var pendingReset by remember(currentPeriod.id) {
+        mutableStateOf<PendingResetRequest?>(null)
+    }
+
+    val beforeStartError = stringResource(R.string.reset_before_start_error)
+    val futureError = stringResource(R.string.reset_future_error)
+    val reasonLengthError = stringResource(R.string.reset_reason_length_error)
+    val noteLengthError = stringResource(R.string.reset_note_length_error)
+
+    pendingReset?.let { request ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!isSaving) pendingReset = null
+            },
+            title = {
+                Text(
+                    modifier = Modifier.semantics { heading() },
+                    text = stringResource(R.string.reset_confirmation_title),
+                )
+            },
+            text = {
+                Text(
+                    text = stringResource(R.string.reset_confirmation_message),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    modifier = Modifier.testTag("confirm-reset-streak"),
+                    onClick = {
+                        onConfirm(
+                            request.epochMs,
+                            request.zoneId,
+                            request.reason,
+                            request.note,
+                        )
+                    },
+                    enabled = !isSaving,
+                ) {
+                    Text(
+                        if (isSaving) {
+                            stringResource(R.string.resetting)
+                        } else {
+                            stringResource(R.string.reset_streak)
+                        }
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    modifier = Modifier.testTag("back-from-reset-confirmation"),
+                    onClick = { pendingReset = null },
+                    enabled = !isSaving,
+                ) {
+                    Text(stringResource(R.string.back))
+                }
+            },
+        )
+        return
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                modifier = Modifier.semantics { heading() },
+                text = stringResource(R.string.reset_streak_title),
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.reset_history_explanation),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+
+                StartEditorFields(
+                    clock = clock,
+                    startDateTime = resetDateTime,
+                    onStartDateTimeChange = {
+                        resetDateTime = it
+                        inputErrors = emptyList()
+                    },
+                    startZoneId = resetZoneId,
+                    onStartZoneIdChange = {
+                        resetZoneId = it
+                        inputErrors = emptyList()
+                    },
+                    startInputErrors = inputErrors,
+                    enabled = !isSaving,
+                    onUseNow = {
+                        val currentZoneId = ZoneId.systemDefault().id
+                        resetZoneId = currentZoneId
+                        resetDateTime = TrackerStartInput.format(
+                            clock.millis(),
+                            currentZoneId,
+                        )
+                        inputErrors = emptyList()
+                    },
+                    headingRes = R.string.reset_time_label,
+                    zoneHintRes = R.string.reset_zone_picker_hint,
+                    useNowRes = R.string.reset_use_now,
+                    testTagPrefix = "reset",
+                )
+
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("reset-reason"),
+                    value = reason,
+                    onValueChange = {
+                        reason = it
+                        inputErrors = emptyList()
+                    },
+                    label = { Text(stringResource(R.string.reset_reason_label)) },
+                    supportingText = {
+                        Text(stringResource(R.string.reset_reason_optional))
+                    },
+                    singleLine = true,
+                    enabled = !isSaving,
+                )
+
+                OutlinedTextField(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("reset-note"),
+                    value = note,
+                    onValueChange = {
+                        note = it
+                        inputErrors = emptyList()
+                    },
+                    label = { Text(stringResource(R.string.reset_note_label)) },
+                    supportingText = {
+                        Text(stringResource(R.string.reset_note_optional))
+                    },
+                    minLines = 2,
+                    enabled = !isSaving,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                modifier = Modifier.testTag(
+                    if (confirmReset) "review-reset-streak" else "confirm-reset-streak"
+                ),
+                onClick = {
+                    val errors = mutableListOf<String>()
+                    when (
+                        val reset = TrackerStartInput.resolve(
+                            resetDateTime,
+                            resetZoneId,
+                        )
+                    ) {
+                        is TrackerStartResolution.Invalid -> {
+                            errors += reset.errors
+                        }
+
+                        is TrackerStartResolution.Valid -> {
+                            if (reset.start.epochMs < currentPeriod.startEpochMs) {
+                                errors += beforeStartError
+                            }
+                            if (reset.start.epochMs > clock.millis()) {
+                                errors += futureError
+                            }
+                            if (reason.trim().length > 120) {
+                                errors += reasonLengthError
+                            }
+                            if (note.trim().length > 2_000) {
+                                errors += noteLengthError
+                            }
+
+                            if (errors.isEmpty()) {
+                                if (confirmReset) {
+                                    pendingReset = PendingResetRequest(
+                                        epochMs = reset.start.epochMs,
+                                        zoneId = reset.start.zoneId,
+                                        reason = reason,
+                                        note = note,
+                                    )
+                                } else {
+                                    onConfirm(
+                                        reset.start.epochMs,
+                                        reset.start.zoneId,
+                                        reason,
+                                        note,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    inputErrors = errors
+                },
+                enabled = !isSaving,
+            ) {
+                Text(
+                    if (isSaving) {
+                        stringResource(R.string.resetting)
+                    } else if (confirmReset) {
+                        stringResource(R.string.reset_review)
+                    } else {
+                        stringResource(R.string.reset_streak)
+                    }
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isSaving,
+            ) {
+                Text(stringResource(R.string.cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -1052,6 +2562,69 @@ private fun GoalEditorDialog(
 }
 
 @Composable
+private fun StreakDetailActionButtons(
+    stacked: Boolean,
+    isResetting: Boolean,
+    onOpenHistory: () -> Unit,
+    onReset: () -> Unit,
+) {
+    val actionMinHeight = if (stacked) 64.dp else 48.dp
+    val actionMaxLines = if (stacked) 2 else 1
+    val actionStyle = if (stacked) {
+        MaterialTheme.typography.labelMedium
+    } else {
+        MaterialTheme.typography.labelLarge
+    }
+    val history: @Composable (Modifier) -> Unit = { modifier ->
+        TextButton(
+            modifier = modifier
+                .heightIn(min = actionMinHeight)
+                .testTag("open-history"),
+            onClick = onOpenHistory,
+        ) {
+            Text(
+                text = stringResource(R.string.view_history),
+                style = actionStyle,
+                maxLines = actionMaxLines,
+                softWrap = stacked,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+    val reset: @Composable (Modifier) -> Unit = { modifier ->
+        Button(
+            modifier = modifier
+                .heightIn(min = actionMinHeight)
+                .testTag("reset-streak"),
+            onClick = onReset,
+            enabled = !isResetting,
+            shape = MaterialTheme.shapes.large,
+        ) {
+            Text(
+                text = if (isResetting) {
+                    stringResource(R.string.resetting)
+                } else {
+                    stringResource(R.string.reset_streak)
+                },
+                style = actionStyle,
+                maxLines = actionMaxLines,
+                softWrap = stacked,
+                textAlign = TextAlign.Center,
+            )
+        }
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        history(Modifier.weight(1f))
+        reset(Modifier.weight(1f))
+    }
+}
+
+@Composable
 private fun SectionCard(
     content: @Composable () -> Unit,
 ) {
@@ -1073,16 +2646,18 @@ private fun SectionCard(
 }
 
 @Composable
-private fun rememberMinuteTick(
+private fun rememberElapsedTick(
     clock: Clock,
     key: String,
-) = remember(clock, key) {
+    showSeconds: Boolean,
+) = remember(clock, key, showSeconds) {
     flow {
+        val intervalMs = if (showSeconds) 1_000L else 60_000L
         while (true) {
             val now = clock.millis()
             emit(now)
-            val untilNextMinute = 60_000L - (now % 60_000L)
-            delay(untilNextMinute.coerceIn(1_000L, 60_000L))
+            val untilNextTick = intervalMs - (now % intervalMs)
+            delay(untilNextTick.coerceIn(1_000L, intervalMs))
         }
     }
 }.collectAsStateWithLifecycle(initialValue = clock.millis())
@@ -1090,6 +2665,7 @@ private fun rememberMinuteTick(
 @Composable
 private fun elapsedSummary(
     elapsed: ElapsedResult,
+    showSeconds: Boolean,
 ): String = when (elapsed) {
     ElapsedResult.ClockInconsistency ->
         stringResource(R.string.clock_inconsistency)
@@ -1098,40 +2674,84 @@ private fun elapsedSummary(
         val breakdown = elapsed.breakdown
         when (breakdown.format) {
             DisplayFormat.DAYS ->
-                stringResource(
-                    R.string.elapsed_days_detail,
-                    breakdown.days,
-                    breakdown.hours,
-                    breakdown.minutes,
-                )
+                if (showSeconds) {
+                    stringResource(
+                        R.string.elapsed_days_detail_seconds,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                        breakdown.seconds,
+                    )
+                } else {
+                    stringResource(
+                        R.string.elapsed_days_detail,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                    )
+                }
 
             DisplayFormat.WEEKS ->
-                stringResource(
-                    R.string.elapsed_weeks_detail,
-                    breakdown.weeks,
-                    breakdown.days,
-                    breakdown.hours,
-                    breakdown.minutes,
-                )
+                if (showSeconds) {
+                    stringResource(
+                        R.string.elapsed_weeks_detail_seconds,
+                        breakdown.weeks,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                        breakdown.seconds,
+                    )
+                } else {
+                    stringResource(
+                        R.string.elapsed_weeks_detail,
+                        breakdown.weeks,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                    )
+                }
 
             DisplayFormat.MONTHS ->
-                stringResource(
-                    R.string.elapsed_months_detail,
-                    breakdown.months,
-                    breakdown.days,
-                    breakdown.hours,
-                    breakdown.minutes,
-                )
+                if (showSeconds) {
+                    stringResource(
+                        R.string.elapsed_months_detail_seconds,
+                        breakdown.months,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                        breakdown.seconds,
+                    )
+                } else {
+                    stringResource(
+                        R.string.elapsed_months_detail,
+                        breakdown.months,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                    )
+                }
 
             DisplayFormat.YEARS ->
-                stringResource(
-                    R.string.elapsed_years_detail,
-                    breakdown.years,
-                    breakdown.months,
-                    breakdown.days,
-                    breakdown.hours,
-                    breakdown.minutes,
-                )
+                if (showSeconds) {
+                    stringResource(
+                        R.string.elapsed_years_detail_seconds,
+                        breakdown.years,
+                        breakdown.months,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                        breakdown.seconds,
+                    )
+                } else {
+                    stringResource(
+                        R.string.elapsed_years_detail,
+                        breakdown.years,
+                        breakdown.months,
+                        breakdown.days,
+                        breakdown.hours,
+                        breakdown.minutes,
+                    )
+                }
         }
     }
 }
@@ -1149,25 +2769,36 @@ private fun TrackerTypeChooser(
     onDismiss: () -> Unit,
     onChoose: (TrackerKind) -> Unit,
 ) {
+    val largeText = LocalDensity.current.fontScale >= 1.5f
+    val optionVerticalPadding = if (largeText) 12.dp else 16.dp
+
     AlertDialog(
+        modifier = Modifier.testTag("tracker-type-dialog"),
         onDismissRequest = onDismiss,
         shape = MaterialTheme.shapes.extraLarge,
         containerColor = MaterialTheme.colorScheme.surface,
         title = {
             Text(
                 text = stringResource(R.string.choose_tracker_type),
-                style = MaterialTheme.typography.headlineSmall,
+                style = if (largeText) {
+                    MaterialTheme.typography.titleLarge
+                } else {
+                    MaterialTheme.typography.headlineSmall
+                },
             )
         },
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .testTag("tracker-type-list"),
+                verticalArrangement = Arrangement.spacedBy(if (largeText) 8.dp else 12.dp),
             ) {
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("tracker-type-event")
-                        .semantics(mergeDescendants = true) {},
+                        .semantics(mergeDescendants = true) {}
+                        .testTag("tracker-type-event"),
                     onClick = { onChoose(TrackerKind.EVENT) },
                     shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1177,26 +2808,31 @@ private fun TrackerTypeChooser(
                     ),
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        modifier = Modifier.padding(
+                            horizontal = 18.dp,
+                            vertical = optionVerticalPadding,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
                             text = stringResource(R.string.tracker_kind_event),
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        Text(
-                            text = stringResource(R.string.event_description),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        if (!largeText) {
+                            Text(
+                                text = stringResource(R.string.event_description),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
 
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("tracker-type-streak")
-                        .semantics(mergeDescendants = true) {},
+                        .semantics(mergeDescendants = true) {}
+                        .testTag("tracker-type-streak"),
                     onClick = { onChoose(TrackerKind.STREAK) },
                     shape = MaterialTheme.shapes.large,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1206,7 +2842,10 @@ private fun TrackerTypeChooser(
                     ),
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                        modifier = Modifier.padding(
+                            horizontal = 18.dp,
+                            vertical = optionVerticalPadding,
+                        ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
@@ -1214,11 +2853,13 @@ private fun TrackerTypeChooser(
                             color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.titleMedium,
                         )
-                        Text(
-                            text = stringResource(R.string.streak_description),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
+                        if (!largeText) {
+                            Text(
+                                text = stringResource(R.string.streak_description),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
             }
@@ -1235,6 +2876,7 @@ private fun TrackerTypeChooser(
 private fun CreateTrackerScreen(
     kind: TrackerKind,
     clock: Clock,
+    initialDisplayFormat: DisplayFormat,
     validationErrors: List<String>,
     saveFailed: Boolean,
     isSaving: Boolean,
@@ -1250,7 +2892,7 @@ private fun CreateTrackerScreen(
     var startZoneId by rememberSaveable(kind.name) { mutableStateOf(defaultZoneId) }
     var startInputErrors by remember { mutableStateOf(emptyList<String>()) }
     var displayFormatName by rememberSaveable(kind.name) {
-        mutableStateOf(DisplayFormat.DAYS.name)
+        mutableStateOf(initialDisplayFormat.name)
     }
     var goalEnabled by rememberSaveable(kind.name) { mutableStateOf(false) }
     var goalAmount by rememberSaveable(kind.name) { mutableStateOf("") }
@@ -1615,6 +3257,10 @@ private fun StartEditorFields(
     startInputErrors: List<String>,
     enabled: Boolean,
     onUseNow: () -> Unit,
+    headingRes: Int = R.string.start_label,
+    zoneHintRes: Int = R.string.start_zone_picker_hint,
+    useNowRes: Int = R.string.use_now,
+    testTagPrefix: String = "start",
 ) {
     val context = LocalContext.current
     val fallbackZone = remember(startZoneId) {
@@ -1636,7 +3282,7 @@ private fun StartEditorFields(
     var showTimeZonePicker by rememberSaveable { mutableStateOf(false) }
 
     Text(
-        text = stringResource(R.string.start_label),
+        text = stringResource(headingRes),
         style = MaterialTheme.typography.titleMedium,
     )
 
@@ -1650,7 +3296,7 @@ private fun StartEditorFields(
             value = DateTimeFormatter
                 .ofLocalizedDate(FormatStyle.SHORT)
                 .format(startLocalDateTime.toLocalDate()),
-            testTag = "start-date-picker",
+            testTag = testTagPrefix + "-date-picker",
             enabled = enabled,
             onClick = { showDatePicker = true },
         )
@@ -1660,7 +3306,7 @@ private fun StartEditorFields(
             value = DateTimeFormatter
                 .ofLocalizedTime(FormatStyle.SHORT)
                 .format(startLocalDateTime.toLocalTime()),
-            testTag = "start-time-picker",
+            testTag = testTagPrefix + "-time-picker",
             enabled = enabled,
             onClick = { showTimePicker = true },
         )
@@ -1670,13 +3316,13 @@ private fun StartEditorFields(
         modifier = Modifier.fillMaxWidth(),
         label = stringResource(R.string.start_zone_label),
         value = startZoneId,
-        testTag = "start-zone-picker",
+        testTag = testTagPrefix + "-zone-picker",
         enabled = enabled,
         onClick = { showTimeZonePicker = true },
     )
     Text(
         modifier = Modifier.padding(horizontal = 16.dp),
-        text = stringResource(R.string.start_zone_picker_hint),
+        text = stringResource(zoneHintRes),
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         style = MaterialTheme.typography.bodySmall,
     )
@@ -1684,7 +3330,7 @@ private fun StartEditorFields(
         onClick = onUseNow,
         enabled = enabled,
     ) {
-        Text(stringResource(R.string.use_now))
+        Text(stringResource(useNowRes))
     }
     if (startInputErrors.isNotEmpty()) {
         Text(
@@ -1876,6 +3522,7 @@ private fun TimeZonePickerDialog(
         },
         text = {
             Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 OutlinedTextField(
@@ -2092,8 +3739,9 @@ private fun EditorActions(
 }
 
 @Composable
-private fun FormatSelector(
+internal fun FormatSelector(
     title: String,
+    supporting: String? = null,
     selected: DisplayFormat,
     enabled: Boolean,
     onSelect: (DisplayFormat) -> Unit,
@@ -2105,6 +3753,13 @@ private fun FormatSelector(
             text = title,
             style = MaterialTheme.typography.titleMedium,
         )
+        if (supporting != null) {
+            Text(
+                text = supporting,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
 
         DisplayFormat.entries.chunked(2).forEach { formats ->
             Row(
@@ -2157,7 +3812,7 @@ private fun FormatSelector(
 }
 
 @Composable
-private fun displayFormatLabel(
+internal fun displayFormatLabel(
     format: DisplayFormat,
 ): String = when (format) {
     DisplayFormat.DAYS -> stringResource(R.string.format_days)

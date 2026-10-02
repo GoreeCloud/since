@@ -22,6 +22,13 @@ abstract class TrackerDao {
     )
     abstract fun observeActiveTrackedEvents(): Flow<List<TrackedEventEntity>>
 
+    @Query(
+        "SELECT * FROM tracked_events " +
+            "WHERE is_archived = 1 " +
+            "ORDER BY updated_at_epoch_ms DESC, title COLLATE NOCASE, id"
+    )
+    abstract fun observeArchivedTrackedEvents(): Flow<List<TrackedEventEntity>>
+
     @Query("SELECT * FROM event_periods ORDER BY event_id, sequence")
     abstract fun observeAllPeriods(): Flow<List<EventPeriodEntity>>
 
@@ -67,6 +74,17 @@ abstract class TrackerDao {
     ): Int
 
     @Query(
+        "UPDATE tracked_events SET " +
+            "is_archived = :isArchived, updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :eventId AND is_archived != :isArchived"
+    )
+    protected abstract suspend fun updateArchiveState(
+        eventId: String,
+        isArchived: Boolean,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query(
         "UPDATE event_periods SET " +
             "start_epoch_ms = :startEpochMs, start_zone_id = :startZoneId, " +
             "updated_at_epoch_ms = :updatedAtEpochMs " +
@@ -91,6 +109,32 @@ abstract class TrackerDao {
     ): Int
 
     @Query(
+        "UPDATE event_periods SET " +
+            "end_epoch_ms = :resetEpochMs, end_zone_id = :resetZoneId, " +
+            "reset_reason = :reason, reset_note = :note, " +
+            "updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :periodId AND event_id = :eventId AND end_epoch_ms IS NULL"
+    )
+    protected abstract suspend fun closeCurrentPeriod(
+        eventId: String,
+        periodId: String,
+        resetEpochMs: Long,
+        resetZoneId: String,
+        reason: String?,
+        note: String?,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query(
+        "UPDATE tracked_events SET updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :eventId AND is_archived = 0"
+    )
+    protected abstract suspend fun touchTracker(
+        eventId: String,
+        updatedAtEpochMs: Long,
+    ): Int
+
+    @Query(
         "UPDATE event_goals SET target_amount = :targetAmount, target_unit = :targetUnit, " +
             "updated_at_epoch_ms = :updatedAtEpochMs WHERE event_id = :eventId"
     )
@@ -103,6 +147,9 @@ abstract class TrackerDao {
 
     @Query("DELETE FROM event_goals WHERE event_id = :eventId")
     protected abstract suspend fun deleteGoal(eventId: String): Int
+
+    @Query("DELETE FROM tracked_events WHERE id = :eventId AND is_archived = 1")
+    protected abstract suspend fun deleteArchivedTrackerRow(eventId: String): Int
 
     @Insert
     abstract suspend fun insertTrackedEvent(entity: TrackedEventEntity)
@@ -189,6 +236,67 @@ abstract class TrackerDao {
     }
 
     @Transaction
+    open suspend fun resetStreak(
+        eventId: String,
+        nextPeriodId: String,
+        resetEpochMs: Long,
+        resetZoneId: String,
+        reason: String?,
+        note: String?,
+        nowEpochMs: Long,
+    ): PersistedTrackerAggregate? {
+        val tracker = readTrackedEvent(eventId) ?: return null
+        if (tracker.isArchived || tracker.kind != TrackerKind.STREAK.name) return null
+        if (resetZoneId.isBlank() || nextPeriodId.isBlank()) return null
+        if (resetEpochMs > nowEpochMs) return null
+
+        val periods = readPeriods(eventId)
+        val current = periods.singleOrNull { it.endEpochMs == null } ?: return null
+        if (resetEpochMs < current.startEpochMs) return null
+        val nextSequence = (periods.maxOfOrNull { it.sequence } ?: current.sequence) + 1
+
+        check(
+            closeCurrentPeriod(
+                eventId = eventId,
+                periodId = current.id,
+                resetEpochMs = resetEpochMs,
+                resetZoneId = resetZoneId,
+                reason = reason,
+                note = note,
+                updatedAtEpochMs = nowEpochMs,
+            ) == 1
+        ) { "streak reset did not close exactly one current period" }
+
+        insertPeriod(
+            EventPeriodEntity(
+                id = nextPeriodId,
+                eventId = eventId,
+                sequence = nextSequence,
+                startEpochMs = resetEpochMs,
+                startZoneId = resetZoneId,
+                endEpochMs = null,
+                endZoneId = null,
+                resetReason = null,
+                resetNote = null,
+                createdAtEpochMs = nowEpochMs,
+                updatedAtEpochMs = nowEpochMs,
+            )
+        )
+
+        check(openPeriodCount(eventId) == 1) {
+            "streak reset did not leave exactly one open current period"
+        }
+        check(
+            touchTracker(
+                eventId = eventId,
+                updatedAtEpochMs = nowEpochMs,
+            ) == 1
+        ) { "streak reset did not update exactly one tracker mutation timestamp" }
+
+        return readAggregate(eventId)
+    }
+
+    @Transaction
     open suspend fun upsertGoal(
         eventId: String,
         targetAmount: Int,
@@ -230,6 +338,31 @@ abstract class TrackerDao {
         if (tracker.isArchived || tracker.kind != TrackerKind.STREAK.name) return false
         val existing = readGoal(eventId) ?: return true
         return deleteGoal(existing.eventId) == 1
+    }
+
+    @Transaction
+    open suspend fun setTrackerArchived(
+        eventId: String,
+        isArchived: Boolean,
+        updatedAtEpochMs: Long,
+    ): PersistedTrackerAggregate? {
+        val tracker = readTrackedEvent(eventId) ?: return null
+        if (tracker.isArchived == isArchived) return readAggregate(eventId)
+        check(
+            updateArchiveState(
+                eventId = eventId,
+                isArchived = isArchived,
+                updatedAtEpochMs = updatedAtEpochMs,
+            ) == 1
+        ) { "archive state did not update exactly one tracker row" }
+        return readAggregate(eventId)
+    }
+
+    @Transaction
+    open suspend fun deleteArchivedTracker(eventId: String): Boolean {
+        val tracker = readTrackedEvent(eventId) ?: return false
+        if (!tracker.isArchived) return false
+        return deleteArchivedTrackerRow(eventId) == 1
     }
 
     @Transaction

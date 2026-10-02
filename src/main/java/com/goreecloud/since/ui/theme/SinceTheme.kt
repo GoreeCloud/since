@@ -3,6 +3,9 @@ package com.goreecloud.since.ui.theme
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -111,16 +114,39 @@ fun SinceTheme(
 @Composable
 private fun SinceSystemBars(darkTheme: Boolean) {
     val view = LocalView.current
-    val background = MaterialTheme.colorScheme.background.toArgb()
+    val lightBackground = SinceLightColors.background.toArgb()
+    val darkBackground = SinceDarkColors.background.toArgb()
 
     SideEffect {
-        val activity = view.context.findActivity() ?: return@SideEffect
-        activity.window.statusBarColor = background
-        activity.window.navigationBarColor = background
-        activity.window.isNavigationBarContrastEnforced = false
-        WindowCompat.getInsetsController(activity.window, view).apply {
+        val activity = view.context.findActivity() as? ComponentActivity ?: return@SideEffect
+
+        // The Activity edge-to-edge helper owns system-bar icon appearance. Re-apply it with
+        // the app-selected theme rather than the device theme so an explicit Since Light/Dark
+        // preference cannot inherit the opposite system-icon style.
+        activity.enableEdgeToEdge(
+            statusBarStyle = if (darkTheme) {
+                SystemBarStyle.dark(darkBackground)
+            } else {
+                SystemBarStyle.light(
+                    scrim = lightBackground,
+                    darkScrim = darkBackground,
+                )
+            },
+            navigationBarStyle = SystemBarStyle.dark(darkBackground),
+        )
+
+        // Android 15+ ignores navigationBarColor for gesture navigation, but three-button
+        // navigation still renders a real navigation surface. Keep that surface dark with
+        // light navigation symbols in both Since themes so OEM/platform fallback behavior
+        // cannot produce white controls on the light application background.
+        activity.window.navigationBarColor = darkBackground
+        activity.window.isNavigationBarContrastEnforced = true
+        WindowCompat.getInsetsController(
+            activity.window,
+            activity.window.decorView,
+        ).apply {
             isAppearanceLightStatusBars = !darkTheme
-            isAppearanceLightNavigationBars = !darkTheme
+            isAppearanceLightNavigationBars = false
         }
     }
 }

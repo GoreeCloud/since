@@ -64,6 +64,33 @@ class TimeEngineTest {
     }
 
     @Test
+    fun calendarComparison_prefersMoreCalendarDaysAcrossSpringDstGap() {
+        val twoCalendarDaysStart =
+            ZonedDateTime.of(2026, 3, 7, 12, 0, 0, 0, zone).toInstant()
+        val twoCalendarDaysEnd =
+            ZonedDateTime.of(2026, 3, 9, 12, 0, 0, 0, zone).toInstant()
+        val longerRawDurationStart =
+            ZonedDateTime.of(2026, 3, 5, 12, 0, 0, 0, zone).toInstant()
+        val longerRawDurationEnd =
+            ZonedDateTime.of(2026, 3, 7, 11, 30, 0, 0, zone).toInstant()
+
+        assertTrue(
+            twoCalendarDaysEnd.toEpochMilli() - twoCalendarDaysStart.toEpochMilli() <
+                longerRawDurationEnd.toEpochMilli() - longerRawDurationStart.toEpochMilli()
+        )
+        assertTrue(
+            engine.compareCalendarElapsed(
+                firstStart = twoCalendarDaysStart,
+                firstEnd = twoCalendarDaysEnd,
+                firstZone = zone,
+                secondStart = longerRawDurationStart,
+                secondEnd = longerRawDurationEnd,
+                secondZone = zone,
+            ) > 0
+        )
+    }
+
+    @Test
     fun earlierEndFailsClosedAsClockInconsistency() {
         val start = Instant.parse("2026-01-02T00:00:00Z")
         val end = Instant.parse("2026-01-01T00:00:00Z")
