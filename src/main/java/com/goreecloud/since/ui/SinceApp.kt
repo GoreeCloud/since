@@ -573,6 +573,11 @@ fun SinceApp(
                     onHomeContextualHintDismissedChange(true)
                 },
                 onAddTracker = onAddTracker,
+                onMoveTracker = { trackerId, delta ->
+                    scope.launch {
+                        runCatching { repository.moveTracker(trackerId, delta) }
+                    }
+                },
                 onOpenTracker = { trackerId ->
                     detailUpdateFailed = false
                     goalUpdateFailed = false
@@ -697,6 +702,7 @@ private fun Dashboard(
     homeContextualHintDismissed: Boolean,
     onDismissHomeContextualHint: () -> Unit,
     onAddTracker: () -> Unit,
+    onMoveTracker: (String, Int) -> Unit,
     onOpenTracker: (String) -> Unit,
 ) {
     val dashboardTick by rememberElapsedTick(
@@ -779,11 +785,24 @@ private fun Dashboard(
                 items = visibleAggregates,
                 key = { it.tracker.id },
             ) { aggregate ->
+                val position = visibleAggregates.indexOfFirst {
+                    it.tracker.id == aggregate.tracker.id
+                }
+                val manualOrderingVisible =
+                    dashboardSort == DashboardSortPreference.MANUAL && searchQuery.isBlank()
                 TrackerCard(
                     aggregate = aggregate,
                     clock = clock,
                     tick = dashboardTick,
                     showSeconds = showSeconds,
+                    showManualOrdering = manualOrderingVisible,
+                    canMoveEarlier = manualOrderingVisible && position > 0,
+                    canMoveLater =
+                        manualOrderingVisible &&
+                            position >= 0 &&
+                            position < visibleAggregates.lastIndex,
+                    onMoveEarlier = { onMoveTracker(aggregate.tracker.id, -1) },
+                    onMoveLater = { onMoveTracker(aggregate.tracker.id, 1) },
                     onClick = { onOpenTracker(aggregate.tracker.id) },
                 )
             }
@@ -1225,6 +1244,11 @@ private fun TrackerCard(
     clock: Clock,
     tick: Long,
     showSeconds: Boolean,
+    showManualOrdering: Boolean,
+    canMoveEarlier: Boolean,
+    canMoveLater: Boolean,
+    onMoveEarlier: () -> Unit,
+    onMoveLater: () -> Unit,
     onClick: () -> Unit,
 ) {
     val currentPeriod = aggregate.periods.single { it.endEpochMs == null }
@@ -1257,7 +1281,7 @@ private fun TrackerCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {},
+            .semantics(mergeDescendants = !showManualOrdering) {},
         shape = MaterialTheme.shapes.extraLarge,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
@@ -1441,6 +1465,32 @@ private fun TrackerCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                }
+            }
+            if (showManualOrdering) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        modifier = Modifier.testTag(
+                            "tracker-move-earlier-" + aggregate.tracker.id,
+                        ),
+                        enabled = canMoveEarlier,
+                        onClick = onMoveEarlier,
+                    ) {
+                        Text(stringResource(R.string.move_tracker_earlier))
+                    }
+                    TextButton(
+                        modifier = Modifier.testTag(
+                            "tracker-move-later-" + aggregate.tracker.id,
+                        ),
+                        enabled = canMoveLater,
+                        onClick = onMoveLater,
+                    ) {
+                        Text(stringResource(R.string.move_tracker_later))
+                    }
                 }
             }
         }

@@ -38,6 +38,22 @@ abstract class TrackerDao {
     @Query("SELECT * FROM tracked_events WHERE id = :eventId")
     protected abstract suspend fun readTrackedEvent(eventId: String): TrackedEventEntity?
 
+    @Query(
+        "SELECT * FROM tracked_events WHERE is_archived = 0 " +
+            "ORDER BY sort_order, created_at_epoch_ms, id"
+    )
+    protected abstract suspend fun readActiveTrackedEvents(): List<TrackedEventEntity>
+
+    @Query(
+        "UPDATE tracked_events SET sort_order = :sortOrder, updated_at_epoch_ms = :updatedAtEpochMs " +
+            "WHERE id = :eventId AND is_archived = 0"
+    )
+    protected abstract suspend fun updateSortOrder(
+        eventId: String,
+        sortOrder: Int,
+        updatedAtEpochMs: Long,
+    ): Int
+
     @Query("SELECT * FROM event_periods WHERE event_id = :eventId ORDER BY sequence")
     protected abstract suspend fun readPeriods(eventId: String): List<EventPeriodEntity>
 
@@ -159,6 +175,30 @@ abstract class TrackerDao {
 
     @Insert
     abstract suspend fun insertGoal(entity: EventGoalEntity)
+
+    @Transaction
+    open suspend fun moveActiveTracker(
+        eventId: String,
+        delta: Int,
+        updatedAtEpochMs: Long,
+    ): Boolean {
+        if (eventId.isBlank() || delta == 0) return false
+        val rows = readActiveTrackedEvents().toMutableList()
+        val from = rows.indexOfFirst { it.id == eventId }
+        if (from < 0) return false
+        val to = (from + delta).coerceIn(0, rows.lastIndex)
+        if (from == to) return false
+        val moved = rows.removeAt(from)
+        rows.add(to, moved)
+        rows.forEachIndexed { index, row ->
+            if (row.sortOrder != index) {
+                check(updateSortOrder(row.id, index, updatedAtEpochMs) == 1) {
+                    "tracker reorder did not update exactly one active row"
+                }
+            }
+        }
+        return true
+    }
 
     @Transaction
     open suspend fun createTrackerAggregate(

@@ -162,6 +162,13 @@ class RoomTrackerRepository(
     override suspend fun deleteArchivedTracker(trackerId: String): Boolean =
         dao.deleteArchivedTracker(trackerId)
 
+    override suspend fun moveTracker(trackerId: String, delta: Int): Boolean =
+        dao.moveActiveTracker(
+            eventId = trackerId,
+            delta = delta,
+            updatedAtEpochMs = clock.millis(),
+        )
+
     override suspend fun resetStreak(
         trackerId: String,
         resetEpochMs: Long,

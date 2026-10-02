@@ -100,6 +100,37 @@ internal class FakeTrackerRepository(
         return true
     }
 
+    override suspend fun moveTracker(trackerId: String, delta: Int): Boolean {
+        if (trackerId.isBlank() || delta == 0) return false
+        val active = aggregates.value
+            .filterNot { it.tracker.isArchived }
+            .sortedWith(
+                compareBy<TrackerAggregate> { it.tracker.sortOrder }
+                    .thenBy { it.tracker.createdAtEpochMs }
+                    .thenBy { it.tracker.id }
+            )
+            .toMutableList()
+        val from = active.indexOfFirst { it.tracker.id == trackerId }
+        if (from < 0) return false
+        val to = (from + delta).coerceIn(0, active.lastIndex)
+        if (from == to) return false
+        val moved = active.removeAt(from)
+        active.add(to, moved)
+        val ranks = active.mapIndexed { index, row -> row.tracker.id to index }.toMap()
+        val now = clock.millis()
+        aggregates.value = aggregates.value.map { row ->
+            ranks[row.tracker.id]?.let { rank ->
+                row.copy(
+                    tracker = row.tracker.copy(
+                        sortOrder = rank,
+                        updatedAtEpochMs = now,
+                    )
+                )
+            } ?: row
+        }
+        return true
+    }
+
     private fun setArchiveState(
         trackerId: String,
         isArchived: Boolean,

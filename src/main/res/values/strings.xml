@@ -253,4 +253,6 @@
     <string name="duplicate_tracker">Duplicate</string>
     <string name="duplicating_tracker">Duplicating…</string>
     <string name="duplicate_tracker_failed">Could not duplicate this tracker. Your original tracker was not changed.</string>
+    <string name="move_tracker_earlier">Move earlier</string>
+    <string name="move_tracker_later">Move later</string>
 </resources>

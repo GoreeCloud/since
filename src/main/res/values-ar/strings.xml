@@ -254,4 +254,6 @@
     <string name="duplicate_tracker">تكرار</string>
     <string name="duplicating_tracker">جارٍ التكرار…</string>
     <string name="duplicate_tracker_failed">تعذّر تكرار هذا المتتبّع. لم يتم تغيير المتتبّع الأصلي.</string>
+    <string name="move_tracker_earlier">نقل للأعلى</string>
+    <string name="move_tracker_later">نقل للأسفل</string>
 </resources>

@@ -42,6 +42,8 @@ interface TrackerRepository {
 
     suspend fun deleteArchivedTracker(trackerId: String): Boolean
 
+    suspend fun moveTracker(trackerId: String, delta: Int): Boolean
+
     suspend fun resetStreak(
         trackerId: String,
         resetEpochMs: Long,

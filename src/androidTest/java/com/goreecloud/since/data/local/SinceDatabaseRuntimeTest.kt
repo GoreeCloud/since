@@ -154,6 +154,40 @@ class SinceDatabaseRuntimeTest {
     }
 
     @Test
+    fun manualTrackerMovementPersistsContiguousActiveOrder() = runBlocking {
+        val now = Instant.parse("2026-10-02T12:00:00Z")
+        val repository = RoomTrackerRepository(
+            dao = dao,
+            clock = Clock.fixed(now, ZoneId.of("UTC")),
+        )
+        listOf("first", "second", "third").forEachIndexed { index, id ->
+            dao.createTrackerAggregate(
+                tracker = trackerEntity(id = id, kind = TrackerKind.EVENT),
+                initialPeriod = periodEntity(
+                    id = "$id-period",
+                    eventId = id,
+                    sequence = 0,
+                    start = 1_000L + index,
+                ),
+                goal = null,
+            )
+        }
+
+        assertTrue(repository.moveTracker("third", -2))
+        val moved = repository.observeActiveTrackerAggregates().first()
+        assertEquals(listOf("third", "first", "second"), moved.map { it.tracker.id })
+        assertEquals(listOf(0, 1, 2), moved.map { it.tracker.sortOrder })
+
+        assertTrue(repository.moveTracker("first", 1))
+        val movedAgain = repository.observeActiveTrackerAggregates().first()
+        assertEquals(listOf("third", "second", "first"), movedAgain.map { it.tracker.id })
+        assertEquals(listOf(0, 1, 2), movedAgain.map { it.tracker.sortOrder })
+
+        assertFalse(repository.moveTracker("third", -1))
+        assertFalse(repository.moveTracker("missing", 1))
+    }
+
+    @Test
     fun persistedDatabaseReopensWithManualInvariantsIntact() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         context.deleteDatabase(SinceDatabase.NAME)
