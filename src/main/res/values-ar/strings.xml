@@ -248,4 +248,7 @@
     <string name="dashboard_started">بدأ في %1$s</string>
     <string name="dashboard_tip_streak">الخطوات الصغيرة تتراكم.</string>
     <string name="dashboard_tip_event">لحظة تستحق التذكّر.</string>
+    <string name="share_tracker">مشاركة</string>
+    <string name="share_tracker_chooser">مشاركة المتعقب</string>
+    <string name="share_tracker_summary">%1$s\nالمدة المنقضية: %2$s\nبدأ: %3$s\n\nتمت المشاركة من Since</string>
 </resources>

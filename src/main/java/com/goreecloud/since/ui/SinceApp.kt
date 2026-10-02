@@ -1,5 +1,6 @@
 package com.goreecloud.since.ui
 
+import android.content.Intent
 import android.text.format.DateFormat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -1498,6 +1499,15 @@ private fun TrackerDetailsScreen(
                     )
             }
     }
+    val context = LocalContext.current
+    val shareSummary = stringResource(
+        R.string.share_tracker_summary,
+        aggregate.tracker.title,
+        elapsedSummary(elapsed, showSeconds),
+        startedOn,
+    )
+    val shareChooserTitle = stringResource(R.string.share_tracker_chooser)
+
     val goalEstimate = aggregate.goal?.let { goal ->
         remember(aggregate, tick, clock) {
             GoalEstimator(clock).estimate(
@@ -1571,8 +1581,25 @@ private fun TrackerDetailsScreen(
                 TextButton(onClick = onBack) {
                     Text(stringResource(R.string.back))
                 }
-                TextButton(onClick = onEdit) {
-                    Text(stringResource(R.string.edit_tracker))
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, shareSummary)
+                            }
+                            runCatching {
+                                context.startActivity(
+                                    Intent.createChooser(sendIntent, shareChooserTitle),
+                                )
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.share_tracker))
+                    }
+                    TextButton(onClick = onEdit) {
+                        Text(stringResource(R.string.edit_tracker))
+                    }
                 }
             }
 

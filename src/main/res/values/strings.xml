@@ -247,4 +247,7 @@
     <string name="dashboard_started">Started %1$s</string>
     <string name="dashboard_tip_streak">Small steps add up.</string>
     <string name="dashboard_tip_event">A moment worth remembering.</string>
+    <string name="share_tracker">Share</string>
+    <string name="share_tracker_chooser">Share tracker</string>
+    <string name="share_tracker_summary">%1$s\nElapsed: %2$s\nStarted: %3$s\n\nShared from Since</string>
 </resources>
