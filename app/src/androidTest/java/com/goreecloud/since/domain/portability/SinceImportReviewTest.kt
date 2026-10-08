@@ -96,6 +96,53 @@ class SinceImportReviewTest {
     }
 
     @Test
+    fun overlappingStreakPeriodsFailClosed() {
+        val aggregate = sampleAggregate("tracker", false, 1, false)
+        val corrupted = aggregate.copy(
+            periods = aggregate.periods.map { period ->
+                if (period.endEpochMs == null) {
+                    period.copy(startEpochMs = 14_000L)
+                } else {
+                    period
+                }
+            },
+        )
+        val payload = SinceExportJson.encode(
+            aggregates = listOf(corrupted),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+
+        assertTrue(SinceImportReviewJson.review(payload) is SinceImportReviewResult.Invalid)
+    }
+
+    @Test
+    fun historicalOpenPeriodFollowedByClosedPeriodFailsClosed() {
+        val aggregate = sampleAggregate("tracker", false, 1, false)
+        val corrupted = aggregate.copy(
+            periods = listOf(
+                aggregate.periods[0].copy(endEpochMs = null, endZoneId = null),
+                aggregate.periods[1].copy(endEpochMs = 40_000L, endZoneId = "UTC"),
+            ),
+        )
+        val payload = SinceExportJson.encode(
+            aggregates = listOf(corrupted),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+
+        assertTrue(SinceImportReviewJson.review(payload) is SinceImportReviewResult.Invalid)
+    }
+
+    @Test
+    fun gapsBetweenChronologicalStreakPeriodsRemainAllowed() {
+        val payload = SinceExportJson.encode(
+            aggregates = listOf(sampleAggregate("tracker", false, 2, false)),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+
+        assertTrue(SinceImportReviewJson.review(payload) is SinceImportReviewResult.Valid)
+    }
+
+    @Test
     fun payloadAboveByteLimitFailsClosedEvenWhenJsonIsOtherwiseValid() {
         val valid = SinceExportJson.encode(
             aggregates = emptyList(),
