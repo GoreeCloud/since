@@ -51,6 +51,9 @@ class RoomTrackerRepository(
             }
         }
 
+    override suspend fun exportSnapshot(): List<TrackerAggregate> =
+        dao.exportSnapshot().map { it.toDomain() }
+
     override suspend fun createTracker(
         draft: ValidatedTrackerDraft,
     ): TrackerAggregate {

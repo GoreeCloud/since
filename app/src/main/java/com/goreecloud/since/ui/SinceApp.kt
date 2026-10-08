@@ -154,10 +154,12 @@ fun SinceApp(
             isExportingData = false
         } else {
             val exportedAtEpochMs = clock.millis()
-            val snapshot = aggregates + archivedAggregates
             scope.launch {
                 val succeeded = withContext(Dispatchers.IO) {
                     runCatching {
+                        // Read all tracker, goal, and period rows in one Room transaction
+                        // instead of combining asynchronous active/archived UI emissions.
+                        val snapshot = repository.exportSnapshot()
                         val payload = SinceExportJson.encodeBounded(
                             aggregates = snapshot,
                             exportedAtEpochMs = exportedAtEpochMs,

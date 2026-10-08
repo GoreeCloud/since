@@ -14,6 +14,9 @@ interface TrackerRepository {
 
     fun observeArchivedTrackerAggregates(): Flow<List<TrackerAggregate>>
 
+    /** A consistent active-and-archived snapshot for portable export, not a UI-flow cache. */
+    suspend fun exportSnapshot(): List<TrackerAggregate>
+
     suspend fun createTracker(draft: ValidatedTrackerDraft): TrackerAggregate
 
     suspend fun loadTracker(trackerId: String): TrackerAggregate?

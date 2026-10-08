@@ -38,6 +38,9 @@ internal class FakeTrackerRepository(
                 .sortedByDescending { it.tracker.updatedAtEpochMs }
         }
 
+    override suspend fun exportSnapshot(): List<TrackerAggregate> =
+        aggregates.value.toList()
+
     override suspend fun createTracker(draft: ValidatedTrackerDraft): TrackerAggregate {
         val id = "created-" + nextId++
         val timestamp = clock.millis()
