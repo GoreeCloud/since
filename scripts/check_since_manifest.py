@@ -27,7 +27,7 @@ for required in required_fragments:
         print(f"required fail-closed manifest setting missing: {required}", file=sys.stderr)
         sys.exit(1)
 
-branding = Path("app/BRANDING.md").read_text(encoding="utf-8")
+branding = Path("BRANDING.md").read_text(encoding="utf-8")
 for required_branding in (
     "GoreeCloud/branding-assets",
     "products/since/app-icon.svg",
