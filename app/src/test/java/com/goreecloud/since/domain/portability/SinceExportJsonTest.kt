@@ -50,6 +50,57 @@ class SinceExportJsonTest {
         assertEquals("GoreeCloud-Since-2026-09-29.json", SinceExportJson.fileName(exportedAt))
     }
 
+    @Test
+    fun boundedExportAcceptsExactUtf8ByteLimit() {
+        val aggregates = listOf(sampleAggregate("tracker", 0, "Read", null, false))
+        val exportedAt = 1_790_640_000_000L
+        val json = SinceExportJson.encode(aggregates, exportedAt)
+
+        assertEquals(
+            json,
+            SinceExportJson.encodeBounded(
+                aggregates = aggregates,
+                exportedAtEpochMs = exportedAt,
+                maxBytes = json.toByteArray(Charsets.UTF_8).size,
+            ),
+        )
+    }
+
+    @Test
+    fun boundedExportRejectsOversizedAsciiPayload() {
+        val aggregates = listOf(sampleAggregate("tracker", 0, "Read", null, false))
+        val exportedAt = 1_790_640_000_000L
+        val json = SinceExportJson.encode(aggregates, exportedAt)
+
+        assertTrue(
+            runCatching {
+                SinceExportJson.encodeBounded(
+                    aggregates = aggregates,
+                    exportedAtEpochMs = exportedAt,
+                    maxBytes = json.length - 1,
+                )
+            }.exceptionOrNull() is IllegalArgumentException,
+        )
+    }
+
+    @Test
+    fun boundedExportRejectsUtf8OverflowEvenWhenCharacterCountFits() {
+        val aggregates = listOf(sampleAggregate("tracker", 0, "Café", null, false))
+        val exportedAt = 1_790_640_000_000L
+        val json = SinceExportJson.encode(aggregates, exportedAt)
+        assertTrue(json.toByteArray(Charsets.UTF_8).size > json.length)
+
+        assertTrue(
+            runCatching {
+                SinceExportJson.encodeBounded(
+                    aggregates = aggregates,
+                    exportedAtEpochMs = exportedAt,
+                    maxBytes = json.length,
+                )
+            }.exceptionOrNull() is IllegalArgumentException,
+        )
+    }
+
     private fun sampleAggregate(
         id: String,
         sortOrder: Int,
