@@ -8,6 +8,6 @@ Owner directive: October 8, 2026. Previous authority: GoreeCloud/android-app-def
 - All 57 original Since file blobs matched their destination counterparts; 25 extracted app-specific commits and the prior standalone initial commit were preserved.
 - Exact PR-head Android build, privacy/schema checks, Android 16 runtime instrumentation, and required Development gate passed. Post-merge standalone `main` passed the same required checks.
 - Standalone `main` protection enforces pull-request integration, strict required Development CI, resolution of review conversations, and prevents force pushes and branch deletion.
-- The source-removal operation is separately staged as part of [android-app-defaults PR #291](https://github.com/GoreeCloud/android-app-defaults/pull/291); the former directory remains on monorepo `main` until that protected PR is accepted.
+- The source-removal operation is separately staged as part of [android-app-defaults PR #291](https://github.com/GoreeCloud/android-app-defaults/pull/291); the protected PR merged as `068a958074431fabecff8748c9b630ea9dfdf6b9`, and main-tree readback confirmed the old directory absent.
 - No representative physical-device, update-in-place signing, or Stable/production acceptance is inferred from this code migration.
 - GoreeCloud Drive's repository index and product tasks require in-place reconciliation after the final old-source retirement.
