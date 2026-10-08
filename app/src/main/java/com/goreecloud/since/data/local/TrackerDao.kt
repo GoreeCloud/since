@@ -44,6 +44,9 @@ abstract class TrackerDao {
     )
     protected abstract suspend fun readActiveTrackedEvents(): List<TrackedEventEntity>
 
+    @Query("SELECT * FROM tracked_events ORDER BY sort_order, created_at_epoch_ms, id")
+    protected abstract suspend fun readAllTrackedEvents(): List<TrackedEventEntity>
+
     @Query(
         "UPDATE tracked_events SET sort_order = :sortOrder, updated_at_epoch_ms = :updatedAtEpochMs " +
             "WHERE id = :eventId AND is_archived = 0"
@@ -404,6 +407,20 @@ abstract class TrackerDao {
         if (!tracker.isArchived) return false
         return deleteArchivedTrackerRow(eventId) == 1
     }
+
+    /**
+     * Take a single consistent SQLite snapshot covering active and archived trackers,
+     * period history, and goals. Export must not combine independently emitted UI flows.
+     */
+    @Transaction
+    open suspend fun exportSnapshot(): List<PersistedTrackerAggregate> =
+        readAllTrackedEvents().map { tracker ->
+            PersistedTrackerAggregate(
+                tracker = tracker,
+                periods = readPeriods(tracker.id),
+                goal = readGoal(tracker.id),
+            )
+        }
 
     @Transaction
     open suspend fun readAggregate(eventId: String): PersistedTrackerAggregate? {
