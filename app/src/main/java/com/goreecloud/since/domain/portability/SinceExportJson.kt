@@ -15,6 +15,25 @@ object SinceExportJson {
         return "GoreeCloud-Since-$date.json"
     }
 
+    /**
+     * Produces a portable export only when the document can be reviewed by the importer.
+     * Enforce both a cheap UTF-16 length bound and the actual UTF-8 byte limit so
+     * multi-byte user text cannot create a file that cannot be imported.
+     */
+    fun encodeBounded(
+        aggregates: List<TrackerAggregate>,
+        exportedAtEpochMs: Long,
+        maxBytes: Int,
+    ): String {
+        require(maxBytes > 0) { "Export byte limit must be positive." }
+        val payload = encode(aggregates, exportedAtEpochMs)
+        require(payload.length <= maxBytes) { "Export exceeds the portable file size limit." }
+        require(payload.toByteArray(Charsets.UTF_8).size <= maxBytes) {
+            "Export exceeds the portable file size limit."
+        }
+        return payload
+    }
+
     fun encode(
         aggregates: List<TrackerAggregate>,
         exportedAtEpochMs: Long,
