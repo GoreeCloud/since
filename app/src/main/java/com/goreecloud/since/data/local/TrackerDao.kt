@@ -47,6 +47,12 @@ abstract class TrackerDao {
     @Query("SELECT * FROM tracked_events ORDER BY sort_order, created_at_epoch_ms, id")
     protected abstract suspend fun readAllTrackedEvents(): List<TrackedEventEntity>
 
+    @Query("SELECT * FROM event_periods ORDER BY event_id, sequence")
+    protected abstract suspend fun readAllPeriods(): List<EventPeriodEntity>
+
+    @Query("SELECT * FROM event_goals ORDER BY event_id")
+    protected abstract suspend fun readAllGoals(): List<EventGoalEntity>
+
     @Query(
         "UPDATE tracked_events SET sort_order = :sortOrder, updated_at_epoch_ms = :updatedAtEpochMs " +
             "WHERE id = :eventId AND is_archived = 0"
@@ -413,14 +419,20 @@ abstract class TrackerDao {
      * period history, and goals. Export must not combine independently emitted UI flows.
      */
     @Transaction
-    open suspend fun exportSnapshot(): List<PersistedTrackerAggregate> =
-        readAllTrackedEvents().map { tracker ->
+    open suspend fun exportSnapshot(): List<PersistedTrackerAggregate> {
+        // Three queries regardless of tracker count; all run under the same Room
+        // transaction so the exported aggregate remains a consistent snapshot.
+        val trackers = readAllTrackedEvents()
+        val periodsByTracker = readAllPeriods().groupBy { it.eventId }
+        val goalsByTracker = readAllGoals().associateBy { it.eventId }
+        return trackers.map { tracker ->
             PersistedTrackerAggregate(
                 tracker = tracker,
-                periods = readPeriods(tracker.id),
-                goal = readGoal(tracker.id),
+                periods = periodsByTracker[tracker.id].orEmpty(),
+                goal = goalsByTracker[tracker.id],
             )
         }
+    }
 
     @Transaction
     open suspend fun readAggregate(eventId: String): PersistedTrackerAggregate? {
