@@ -158,9 +158,10 @@ fun SinceApp(
             scope.launch {
                 val succeeded = withContext(Dispatchers.IO) {
                     runCatching {
-                        val payload = SinceExportJson.encode(
+                        val payload = SinceExportJson.encodeBounded(
                             aggregates = snapshot,
                             exportedAtEpochMs = exportedAtEpochMs,
+                            maxBytes = SinceImportReviewJson.MAX_IMPORT_BYTES,
                         )
                         val output = context.contentResolver.openOutputStream(uri, "wt")
                             ?: error("Selected export destination could not be opened")
