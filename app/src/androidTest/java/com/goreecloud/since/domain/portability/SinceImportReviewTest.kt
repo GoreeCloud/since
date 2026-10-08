@@ -95,6 +95,34 @@ class SinceImportReviewTest {
         assertTrue(SinceImportReviewJson.review(payload) is SinceImportReviewResult.Invalid)
     }
 
+    @Test
+    fun payloadAboveByteLimitFailsClosedEvenWhenJsonIsOtherwiseValid() {
+        val valid = SinceExportJson.encode(
+            aggregates = emptyList(),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+        val atLimit = valid + " ".repeat(SinceImportReviewJson.MAX_IMPORT_BYTES - valid.length)
+        assertTrue(SinceImportReviewJson.review(atLimit) is SinceImportReviewResult.Valid)
+        assertTrue(
+            SinceImportReviewJson.review(atLimit + " ") is SinceImportReviewResult.Invalid,
+        )
+    }
+
+    @Test
+    fun multibyteUtf8PayloadAboveByteLimitFailsClosed() {
+        val valid = SinceExportJson.encode(
+            aggregates = listOf(sampleAggregate("tracker", false, 0, false)),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+        val title = "Tracker tracker"
+        assertTrue(valid.contains(title))
+        val oversizedTitle = "€".repeat((SinceImportReviewJson.MAX_IMPORT_BYTES / 3) + 1)
+        val oversized = valid.replace(title, oversizedTitle)
+        assertTrue(oversized.length < SinceImportReviewJson.MAX_IMPORT_BYTES)
+        assertTrue(oversized.toByteArray(Charsets.UTF_8).size > SinceImportReviewJson.MAX_IMPORT_BYTES)
+        assertTrue(SinceImportReviewJson.review(oversized) is SinceImportReviewResult.Invalid)
+    }
+
     private fun sampleAggregate(
         id: String,
         archived: Boolean,
