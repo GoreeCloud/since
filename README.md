@@ -4,7 +4,7 @@ GoreeCloud Since is a native, privacy-first Android app for elapsed-time tracker
 
 ## Source ownership and status
 
-The owner directed independent development in GoreeCloud/since on October 8, 2026. This pull-request candidate extracts the implementation and its Git history from GoreeCloud/android-app-defaults/apps/since/. The migration is not complete until exact-head validation, acceptance on the standalone default branch, and separate protected monorepo retirement.
+**Canonical development repository:** `GoreeCloud/since` on GitHub `main`, effective October 8, 2026. Standalone source/history migration [PR #1](https://github.com/GoreeCloud/since/pull/1) merged as `2e68fb5221b38e347e5133b08fb826a9ca7909ba` after full exact-head Android build, schema/privacy checks, and Android 16 runtime instrumentation passed. The independent `main` also passed post-merge CI, and branch protection is enabled. The former monorepo source at `GoreeCloud/android-app-defaults/apps/since/` was retired by the protected [android-app-defaults PR #291](https://github.com/GoreeCloud/android-app-defaults/pull/291), merged into its `main` as `068a958074431fabecff8748c9b630ea9dfdf6b9`. The original source remains recoverable in Git history. The monorepo's maintained application directories are now `apps/camera/` and `apps/clock/` only.
 
 **Development** — not Stable or production-qualified. Android 16 emulator tests are not representative-device acceptance.
 
