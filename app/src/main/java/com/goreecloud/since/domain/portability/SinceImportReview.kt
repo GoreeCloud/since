@@ -60,8 +60,14 @@ object SinceImportReviewJson {
     private const val MAX_TRACKERS = 10_000
     private const val MAX_PERIODS = 100_000
 
-    fun review(payload: String): SinceImportReviewResult =
-        runCatching {
+    fun review(payload: String): SinceImportReviewResult {
+        // A caller may invoke the reviewer without passing through the document-picker byte
+        // gate. Reject oversized payloads here too, before creating the parser or a UTF-8 copy.
+        if (payload.length > MAX_IMPORT_BYTES) return SinceImportReviewResult.Invalid
+        if (payload.toByteArray(Charsets.UTF_8).size > MAX_IMPORT_BYTES) {
+            return SinceImportReviewResult.Invalid
+        }
+        return runCatching {
             JsonReader(StringReader(payload)).use { reader ->
                 reader.isLenient = false
                 val result = parseRoot(reader)
@@ -71,6 +77,7 @@ object SinceImportReviewJson {
         }.getOrElse {
             SinceImportReviewResult.Invalid
         }
+    }
 
     private fun parseRoot(reader: JsonReader): SinceImportReviewResult.Valid {
         var format: String? = null
