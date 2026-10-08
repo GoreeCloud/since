@@ -249,6 +249,7 @@ object SinceImportReviewJson {
         var count = 0
         var openCount = 0
         val sequences = mutableSetOf<Int>()
+        val parsedPeriods = mutableListOf<ParsedPeriod>()
 
         reader.beginArray()
         while (reader.hasNext()) {
@@ -257,8 +258,23 @@ object SinceImportReviewJson {
             count += 1
             if (period.open) openCount += 1
             check(sequences.add(period.sequence))
+            parsedPeriods += period
         }
         reader.endArray()
+
+        // A restore candidate must not contain an open historical period, a reordered
+        // current period, or overlapping elapsed intervals. A gap is allowed because
+        // editing the current start after a reset can intentionally create one.
+        val orderedPeriods = parsedPeriods.sortedBy { it.sequence }
+        orderedPeriods.forEachIndexed { index, period ->
+            check(period.sequence == index)
+            if (index == orderedPeriods.lastIndex) {
+                check(period.open)
+            } else {
+                check(!period.open)
+                check(checkNotNull(period.endEpochMs) <= orderedPeriods[index + 1].startEpochMs)
+            }
+        }
 
         return PeriodSummary(
             count = count,
@@ -346,6 +362,8 @@ object SinceImportReviewJson {
 
         return ParsedPeriod(
             sequence = periodSequence,
+            startEpochMs = start,
+            endEpochMs = end,
             open = end == null,
         )
     }
@@ -422,6 +440,8 @@ object SinceImportReviewJson {
 
     private data class ParsedPeriod(
         val sequence: Int,
+        val startEpochMs: Long,
+        val endEpochMs: Long?,
         val open: Boolean,
     )
 
