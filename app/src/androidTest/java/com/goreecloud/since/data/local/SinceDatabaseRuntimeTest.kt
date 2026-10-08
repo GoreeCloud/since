@@ -154,6 +154,65 @@ class SinceDatabaseRuntimeTest {
     }
 
     @Test
+    fun exportSnapshotIncludesArchivedTrackerAndCompleteStreakHistory() = runBlocking {
+        val now = Instant.parse("2026-10-08T12:00:00Z")
+        val repository = RoomTrackerRepository(
+            dao = dao,
+            clock = Clock.fixed(now, ZoneId.of("UTC")),
+        )
+        val streak = trackerEntity(id = "export-streak", kind = TrackerKind.STREAK)
+        val event = trackerEntity(id = "export-event", kind = TrackerKind.EVENT)
+        dao.createTrackerAggregate(
+            tracker = streak,
+            initialPeriod = periodEntity(
+                id = "export-streak-period-0",
+                eventId = streak.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = EventGoalEntity(
+                eventId = streak.id,
+                targetAmount = 30,
+                targetUnit = DisplayFormat.DAYS.name,
+                createdAtEpochMs = 1_000L,
+                updatedAtEpochMs = 1_000L,
+            ),
+        )
+        dao.createTrackerAggregate(
+            tracker = event,
+            initialPeriod = periodEntity(
+                id = "export-event-period-0",
+                eventId = event.id,
+                sequence = 0,
+                start = 1_000L,
+            ),
+            goal = null,
+        )
+        assertNotNull(
+            dao.resetStreak(
+                eventId = streak.id,
+                nextPeriodId = "export-streak-period-1",
+                resetEpochMs = 2_000L,
+                resetZoneId = "UTC",
+                reason = null,
+                note = null,
+                nowEpochMs = 3_000L,
+            ),
+        )
+        assertNotNull(dao.setTrackerArchived(event.id, true, 4_000L))
+
+        val snapshot = repository.exportSnapshot()
+        assertEquals(setOf(streak.id, event.id), snapshot.map { it.tracker.id }.toSet())
+        val exportedStreak = snapshot.single { it.tracker.id == streak.id }
+        assertEquals(2, exportedStreak.periods.size)
+        assertEquals(1, exportedStreak.periods.count { it.endEpochMs == null })
+        assertEquals(30, exportedStreak.goal!!.targetAmount)
+        val exportedArchivedEvent = snapshot.single { it.tracker.id == event.id }
+        assertTrue(exportedArchivedEvent.tracker.isArchived)
+        assertEquals(1, exportedArchivedEvent.periods.size)
+    }
+
+    @Test
     fun manualTrackerMovementPersistsContiguousActiveOrder() = runBlocking {
         val now = Instant.parse("2026-10-02T12:00:00Z")
         val repository = RoomTrackerRepository(
