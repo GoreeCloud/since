@@ -170,6 +170,45 @@ class SinceImportReviewTest {
         assertTrue(SinceImportReviewJson.review(oversized) is SinceImportReviewResult.Invalid)
     }
 
+    @Test
+    fun malformedUnicodeEscapesFailReviewBeforeRestore() {
+        val payload = SinceExportJson.encode(
+            aggregates = listOf(sampleAggregate("tracker", false, 0, false)),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+        val slash = 92.toChar().toString()
+        val invalidValues = listOf(
+            "${slash}uD83D",
+            "${slash}uDE80",
+            "${slash}uD83D${slash}u0041",
+        )
+        invalidValues.forEach { invalid ->
+            assertTrue(
+                SinceImportReviewJson.review(payload.replace("Tracker tracker", invalid))
+                    is SinceImportReviewResult.Invalid,
+            )
+        }
+        assertTrue(
+            SinceImportReviewJson.review(
+                payload.replace("\"note\": null", "\"note\": \"${slash}uD83D\""),
+            ) is SinceImportReviewResult.Invalid,
+        )
+    }
+
+    @Test
+    fun escapedSupplementaryUnicodeRemainsReviewable() {
+        val payload = SinceExportJson.encode(
+            aggregates = listOf(sampleAggregate("tracker", false, 0, false)),
+            exportedAtEpochMs = 1_790_640_000_000L,
+        )
+        val slash = 92.toChar().toString()
+        val emoji = "${slash}uD83D${slash}uDE80"
+        assertTrue(
+            SinceImportReviewJson.review(payload.replace("Tracker tracker", emoji))
+                is SinceImportReviewResult.Valid,
+        )
+    }
+
     private fun sampleAggregate(
         id: String,
         archived: Boolean,
