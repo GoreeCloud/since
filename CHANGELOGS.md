@@ -1,8 +1,10 @@
 # GoreeCloud Since — Changelog
 
-## 2026-10-08 — Independent repository migration candidate
+## 2026-10-08 — Independent repository migration complete (Development)
 
 Imported original source history and prepared a standalone Android build/CI. No release lifecycle promotion is claimed.
+
+Protected standalone `main` integrated PRs #5–#8 for import review, bounded export, transactional snapshots, and batched export reads. Their exact-head required CI and post-merge Android 16 checks passed (latest: workflow 37863968428, commit `5d3019d`). Restore/recovery, signer continuity, physical-device acceptance, and platform qualification remain open.
 
 ## 2026-09-24 — Since dark-mode system-bar contrast correction integration
 
