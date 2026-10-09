@@ -204,12 +204,16 @@ class SinceDatabaseRuntimeTest {
         val snapshot = repository.exportSnapshot()
         assertEquals(setOf(streak.id, event.id), snapshot.map { it.tracker.id }.toSet())
         val exportedStreak = snapshot.single { it.tracker.id == streak.id }
-        assertEquals(2, exportedStreak.periods.size)
+        assertEquals(
+            listOf("export-streak-period-0", "export-streak-period-1"),
+            exportedStreak.periods.map { it.id },
+        )
         assertEquals(1, exportedStreak.periods.count { it.endEpochMs == null })
         assertEquals(30, exportedStreak.goal!!.targetAmount)
         val exportedArchivedEvent = snapshot.single { it.tracker.id == event.id }
         assertTrue(exportedArchivedEvent.tracker.isArchived)
-        assertEquals(1, exportedArchivedEvent.periods.size)
+        assertEquals(listOf("export-event-period-0"), exportedArchivedEvent.periods.map { it.id })
+        assertNull(exportedArchivedEvent.goal)
     }
 
     @Test
