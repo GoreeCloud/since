@@ -101,6 +101,27 @@ class SinceExportJsonTest {
         )
     }
 
+    @Test
+    fun unicodeExportIsLosslessAndRejectsUnpairedSurrogates() {
+        val valid = sampleAggregate("emoji", 0, "Since 🚀", "مرحبا", false)
+        val json = SinceExportJson.encodeBounded(
+            listOf(valid), 1_790_640_000_000L, SinceImportReviewJson.MAX_IMPORT_BYTES,
+        )
+        assertTrue(json.contains("Since 🚀"))
+        assertTrue(json.contains("مرحبا"))
+        val bad = String(charArrayOf(0xD83D.toChar()))
+        assertTrue(
+            runCatching {
+                SinceExportJson.encode(listOf(sampleAggregate("bad", 0, bad, null, false)), 1000L)
+            }.exceptionOrNull() is IllegalArgumentException,
+        )
+        assertTrue(
+            runCatching {
+                SinceExportJson.encode(listOf(sampleAggregate("bad", 0, "Read", bad, false)), 1000L)
+            }.exceptionOrNull() is IllegalArgumentException,
+        )
+    }
+
     private fun sampleAggregate(
         id: String,
         sortOrder: Int,
