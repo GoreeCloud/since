@@ -122,6 +122,29 @@ class SinceExportJsonTest {
         )
     }
 
+    @Test
+    fun brokenSurrogateSequencesFailClosedInBothTextFields() {
+        val malformed = listOf(
+            String(charArrayOf(0xDE80.toChar())),
+            String(charArrayOf(0xD83D.toChar(), 'x')),
+            String(charArrayOf(0xDE80.toChar(), 0xD83D.toChar())),
+        )
+        malformed.forEach { value ->
+            listOf(
+                sampleAggregate("bad", 0, value, null, false),
+                sampleAggregate("bad", 0, "Read", value, false),
+            ).forEach { aggregate ->
+                assertTrue(
+                    runCatching {
+                        SinceExportJson.encodeBounded(
+                            listOf(aggregate), 1000L, SinceImportReviewJson.MAX_IMPORT_BYTES,
+                        )
+                    }.exceptionOrNull() is IllegalArgumentException,
+                )
+            }
+        }
+    }
+
     private fun sampleAggregate(
         id: String,
         sortOrder: Int,
