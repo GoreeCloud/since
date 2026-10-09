@@ -143,6 +143,18 @@ object SinceExportJson {
     }
 
     private fun StringBuilder.appendJsonString(value: String) {
+        // Reject malformed UTF-16 before it can be silently replaced during UTF-8 output.
+        value.forEachIndexed { index, character ->
+            require(
+                when {
+                    character.isHighSurrogate() ->
+                        index < value.lastIndex && value[index + 1].isLowSurrogate()
+                    character.isLowSurrogate() ->
+                        index > 0 && value[index - 1].isHighSurrogate()
+                    else -> true
+                },
+            ) { "Cannot export malformed Unicode text." }
+        }
         append('"')
         value.forEach { character ->
             when (character) {
