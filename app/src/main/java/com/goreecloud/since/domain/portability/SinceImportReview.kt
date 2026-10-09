@@ -93,7 +93,7 @@ object SinceImportReviewJson {
             val name = reader.nextName()
             check(seen.add(name))
             when (name) {
-                "format" -> format = reader.nextString()
+                "format" -> format = reader.nextPortableString()
                 "schemaVersion" -> schemaVersion = reader.nextInt()
                 "exportedAtEpochMs" -> exportedAtEpochMs = reader.nextLong()
                 "trackers" -> trackerSummary = parseTrackers(reader, trackerIds, periodIds)
@@ -173,14 +173,14 @@ object SinceImportReviewJson {
             val name = reader.nextName()
             check(seen.add(name))
             when (name) {
-                "id" -> id = reader.nextString()
-                "title" -> title = reader.nextString()
+                "id" -> id = reader.nextPortableString()
+                "title" -> title = reader.nextPortableString()
                 "note" -> reader.nextNullableString()
-                "kind" -> kind = TrackerKind.valueOf(reader.nextString())
+                "kind" -> kind = TrackerKind.valueOf(reader.nextPortableString())
                 "iconKey" -> reader.nextNullableString()
                 "accentKey" -> reader.nextNullableString()
                 "defaultDisplayFormat" ->
-                    displayFormat = DisplayFormat.valueOf(reader.nextString())
+                    displayFormat = DisplayFormat.valueOf(reader.nextPortableString())
                 "sortOrder" -> sortOrder = reader.nextInt()
                 "isArchived" -> archived = reader.nextBoolean()
                 "createdAtEpochMs" -> createdAtEpochMs = reader.nextLong()
@@ -304,10 +304,10 @@ object SinceImportReviewJson {
             val name = reader.nextName()
             check(seen.add(name))
             when (name) {
-                "id" -> id = reader.nextString()
+                "id" -> id = reader.nextPortableString()
                 "sequence" -> sequence = reader.nextInt()
                 "startEpochMs" -> startEpochMs = reader.nextLong()
-                "startZoneId" -> startZoneId = reader.nextString()
+                "startZoneId" -> startZoneId = reader.nextPortableString()
                 "endEpochMs" -> {
                     endEpochWasRead = true
                     endEpochMs = reader.nextNullableLong()
@@ -386,7 +386,7 @@ object SinceImportReviewJson {
             check(seen.add(name))
             when (name) {
                 "targetAmount" -> targetAmount = reader.nextInt()
-                "targetUnit" -> targetUnit = DisplayFormat.valueOf(reader.nextString())
+                "targetUnit" -> targetUnit = DisplayFormat.valueOf(reader.nextPortableString())
                 "createdAtEpochMs" -> createdAtEpochMs = reader.nextLong()
                 "updatedAtEpochMs" -> updatedAtEpochMs = reader.nextLong()
                 else -> error("Unsupported field")
@@ -403,12 +403,29 @@ object SinceImportReviewJson {
         return GoalSummary
     }
 
+    private fun JsonReader.nextPortableString(): String =
+        nextString().also { text ->
+            // A JSON escape may decode to an unpaired surrogate even when the
+            // input file itself contains only ASCII bytes.
+            text.forEachIndexed { index, character ->
+                check(
+                    when {
+                        character.isHighSurrogate() ->
+                            index < text.lastIndex && text[index + 1].isLowSurrogate()
+                        character.isLowSurrogate() ->
+                            index > 0 && text[index - 1].isHighSurrogate()
+                        else -> true
+                    },
+                ) { "Malformed Unicode in import." }
+            }
+        }
+
     private fun JsonReader.nextNullableString(): String? =
         if (peek() == JsonToken.NULL) {
             nextNull()
             null
         } else {
-            nextString()
+            nextPortableString()
         }
 
     private fun JsonReader.nextNullableLong(): Long? =
